@@ -12,3 +12,7 @@ const (
 	StatusDone           Status = "done"
 	StatusFailed         Status = "failed"
 )
+
+func (s Status) IsTerminal() bool {
+	return s == StatusDone || s == StatusFailed
+}
