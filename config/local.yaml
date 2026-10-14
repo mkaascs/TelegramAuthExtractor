@@ -1,0 +1,5 @@
+env: "local" # prod, dev
+http_server:
+  port: 8080
+  write_timeout: 5s
+  read_timeout: 10s

@@ -1,5 +1,7 @@
 package main
 
-func main() {
+import "telegram-auth-extractor/internal/config"
 
+func main() {
+	_ = config.MustLoad()
 }
