@@ -22,7 +22,8 @@ func (mr *MemoryRepository) Create(_ context.Context, session *domain.Session) e
 	mr.rwMx.Lock()
 	defer mr.rwMx.Unlock()
 
-	mr.sessions[uuid.UUID(session.ID)] = session
+	cp := *session
+	mr.sessions[uuid.UUID(session.ID)] = &cp
 	return nil
 }
 
