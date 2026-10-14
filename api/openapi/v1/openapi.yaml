@@ -46,9 +46,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/Session'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: Malformed request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /sessions/{id}:
     get:
@@ -64,9 +72,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/Session'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       operationId: deleteSession
       summary: Cancel the task and clean up the device
@@ -80,9 +96,17 @@ paths:
         '204':
           description: Task cancelled/removed
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /sessions/{id}/code:
     post:
@@ -108,9 +132,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/Session'
         '400':
-          $ref: '#/components/responses/BadRequest'
+          description: Malformed request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '409':
           description: Task is not waiting for a code (see current status in body)
           content:
@@ -118,7 +150,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /sessions/{id}/result:
     get:
@@ -137,7 +173,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExtractedData'
         '404':
-          $ref: '#/components/responses/NotFound'
+          description: Task not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '409':
           description: Result is not ready yet (see current status in body)
           content:
@@ -145,7 +185,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '500':
-          $ref: '#/components/responses/InternalError'
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 components:
   parameters:
@@ -157,26 +201,6 @@ components:
       schema:
         type: string
         format: uuid
-
-  responses:
-    BadRequest:
-      description: Malformed request
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    NotFound:
-      description: Task not found
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    InternalError:
-      description: Internal server error
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
 
   schemas:
     SessionStatus:
