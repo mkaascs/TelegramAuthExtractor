@@ -1,0 +1,30 @@
+version: "3"
+
+tasks:
+  default:
+    desc: "Command list"
+    cmds:
+      - task --list --color
+  test:
+    desc: "Run all tests"
+    cmds:
+      - go test -race -v -coverprofile=coverage.out ./internal/...
+  test:cover:
+    desc: "Run all tests with visual coverage out"
+    deps: [ test ]
+    cmds:
+      - go tool cover -html=coverage.out -o coverage.html
+  generate:api:
+    desc: "Generate openapi code"
+    cmds:
+      - go generate ./gen/...
+  lint:
+    desc: "Run linter"
+    cmds:
+      - golangci-lint run ./...
+  run:
+    desc: "Run the service locally"
+    env:
+      CONFIG_PATH: ./config/local.yaml
+    cmds:
+      - go run ./cmd/telegram-auth-extractor
