@@ -1,0 +1,7 @@
+package: v1
+output: ../../../gen/rest/v1/api.gen.go
+generate:
+  models: true
+  chi-server: true
+  strict-server: true
+  embedded-spec: true

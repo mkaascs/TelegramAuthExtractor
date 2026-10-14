@@ -1,0 +1,258 @@
+openapi: 3.0.3
+
+info:
+  title: Telegram Auth Extractor API
+  version: 1.0.0
+  description: >
+    Service for extracting Telegram authorization data (auth_key, dc_id,
+    user_id) from a virtual Android. The service signs into the account via
+    ADB; the confirmation code is submitted manually through a dedicated
+    endpoint. The operation is asynchronous: the client creates a task, polls
+    its status, and fetches the result once the task has finished.
+
+servers:
+  - url: /api/v1
+
+paths:
+  /sessions:
+    post:
+      operationId: createSession
+      summary: Create an extraction task
+      description: >
+        Starts the lifecycle: the service enters the phone number via ADB and
+        reaches the code input screen. Returns the task in `pending` status
+        immediately, without waiting for completion. If an unfinished task for
+        the same phone number already exists, that task is returned instead of
+        creating a new one (idempotent retry).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '200':
+          description: >
+            Idempotent retry — an unfinished task for this phone number already
+            exists and is returned as is
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '202':
+          description: A new task was created and queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /sessions/{id}:
+    get:
+      operationId: getSession
+      summary: Get task status
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Current task state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: deleteSession
+      summary: Cancel the task and clean up the device
+      description: >
+        Aborts an active task (including while waiting for the code) and
+        returns the device to a clean state (pm clear). For already finished
+        tasks it simply removes the record.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '204':
+          description: Task cancelled/removed
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /sessions/{id}/code:
+    post:
+      operationId: submitCode
+      summary: Submit the confirmation code
+      description: >
+        Accepted only while the task is in `waiting_for_code` status. The code
+        is entered into Telegram via ADB, after which the task continues its
+        pipeline (extraction and verification).
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitCodeRequest'
+      responses:
+        '202':
+          description: Code accepted, task continues processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Task is not waiting for a code (see current status in body)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /sessions/{id}/result:
+    get:
+      operationId: getSessionResult
+      summary: Fetch the extracted data
+      description: >
+        Available only while the task is in `done` status. Otherwise returns
+        409 with the current status in the body.
+      parameters:
+        - $ref: '#/components/parameters/SessionId'
+      responses:
+        '200':
+          description: Extracted authorization data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractedData'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Result is not ready yet (see current status in body)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  parameters:
+    SessionId:
+      name: id
+      in: path
+      required: true
+      description: Task identifier
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Task not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    SessionStatus:
+      type: string
+      description: Stage in the task lifecycle
+      enum:
+        - pending
+        - logging_in
+        - waiting_for_code
+        - entering_code
+        - extracting
+        - verifying
+        - cleanup
+        - done
+        - failed
+
+    CreateSessionRequest:
+      type: object
+      required:
+        - phone
+      properties:
+        phone:
+          type: string
+          description: Phone number in E.164 format
+          pattern: '^\+[1-9]\d{1,14}$'
+          example: '+79991234567'
+
+    SubmitCodeRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          description: Confirmation code from SMS/Telegram
+          pattern: '^\d{5,6}$'
+          example: '12345'
+
+    Session:
+      type: object
+      required:
+        - id
+        - phone
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+          example: '+79991234567'
+        status:
+          $ref: '#/components/schemas/SessionStatus'
+        error:
+          type: string
+          nullable: true
+          description: Reason for the `failed` transition; omitted otherwise
+          example: code_timeout
+        created_at:
+          type: string
+          format: date-time
+
+    ExtractedData:
+      type: object
+      required:
+        - dc_id
+        - auth_key
+        - user_id
+      properties:
+        dc_id:
+          type: integer
+          description: Account home datacenter (resolved via USER_MIGRATE)
+          example: 2
+        auth_key:
+          type: string
+          format: byte
+          description: Permanent auth key (256 bytes), base64-encoded
+        user_id:
+          type: integer
+          format: int64
+          example: 1153367122
+
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code
+          example: session_not_waiting_for_code
+        message:
+          type: string
+          example: 'session is not waiting for code (current: logging_in)'
