@@ -1,0 +1,124 @@
+package workers
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"telegram-auth-extractor/internal/domain"
+)
+
+func (w *Worker) runPipeline(ctx context.Context, session *domain.Session, inputCh <-chan string) error {
+	const fn = "services.workers.Worker.runPipeline"
+
+	if err := w.login(ctx, session); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	code, err := w.waitForCode(ctx, session, inputCh)
+	if err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if err := w.enterCode(ctx, session, code); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if err := w.extract(ctx, session); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	return nil
+}
+
+func (w *Worker) login(ctx context.Context, session *domain.Session) error {
+	const fn = "services.workers.Worker.login"
+
+	if err := w.setStatus(ctx, session, domain.StatusLoggingIn); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if err := w.device.PrepareTelegram(ctx); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if err := w.device.EnterPhone(ctx, session.Phone); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	return nil
+}
+
+func (w *Worker) waitForCode(ctx context.Context, session *domain.Session, inputCh <-chan string) (string, error) {
+	const fn = "services.workers.Worker.waitForCode"
+
+	if err := w.setStatus(ctx, session, domain.StatusWaitingForCode); err != nil {
+		return "", fmt.Errorf("%s: %w", fn, err)
+	}
+
+	select {
+	case code := <-inputCh:
+		return code, nil
+	case <-time.After(w.cfg.CodeWait):
+		return "", fmt.Errorf("%s: %w", fn, domain.ErrCodeTimeout)
+	case <-ctx.Done():
+		return "", fmt.Errorf("%s: %w", fn, ctx.Err())
+	}
+}
+
+func (w *Worker) enterCode(ctx context.Context, session *domain.Session, code string) error {
+	const fn = "services.workers.Worker.enterCode"
+
+	if err := w.setStatus(ctx, session, domain.StatusEnteringCode); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if err := w.device.EnterCode(ctx, code); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	return nil
+}
+
+func (w *Worker) extract(ctx context.Context, session *domain.Session) error {
+	const fn = "services.workers.Worker.extract"
+
+	if err := w.setStatus(ctx, session, domain.StatusExtracting); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	data, err := w.device.SessionFile(ctx)
+	if err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	keys, err := w.parser.Parse(ctx, data)
+	if err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	result, err := w.verifier.Verify(ctx, keys)
+	if err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	session.Result = result
+	return nil
+}
+
+func (w *Worker) runCleanup(session *domain.Session) error {
+	const fn = "services.workers.Worker.runCleanup"
+
+	ctx, cancel := context.WithTimeout(context.Background(), w.cfg.CleanupTimeout)
+	defer cancel()
+
+	if err := w.setStatus(ctx, session, domain.StatusCleanup); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if err := w.device.Clear(ctx); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	return nil
+}

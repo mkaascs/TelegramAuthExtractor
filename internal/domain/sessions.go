@@ -16,3 +16,16 @@ type Session struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
+
+func NewSession(phone string) *Session {
+	id, _ := uuid.NewV7()
+	now := time.Now()
+
+	return &Session{
+		ID:        SessionID(id),
+		Phone:     phone,
+		Status:    StatusPending,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+}

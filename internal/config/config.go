@@ -29,6 +29,12 @@ type Http struct {
 	ReadTimeout  time.Duration `yaml:"read_timeout" env-default:"10s"`
 }
 
+type Worker struct {
+	CodeWait       time.Duration `yaml:"code_wait" env-default:"1m"`
+	CleanupTimeout time.Duration `yaml:"cleanup_timeout" env-default:"1m"`
+	QueueSize      int           `yaml:"queue_size" env-default:"20"`
+}
+
 func MustLoad() *Config {
 	cfg, err := Load()
 	if err != nil {
