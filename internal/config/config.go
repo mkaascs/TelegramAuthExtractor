@@ -21,6 +21,7 @@ const (
 type Config struct {
 	Env  EnvType `yaml:"env"`
 	Http Http    `yaml:"http_server"`
+	ADB  ADB     `yaml:"adb"`
 }
 
 type Http struct {
@@ -33,6 +34,14 @@ type Worker struct {
 	CodeWait       time.Duration `yaml:"code_wait" env-default:"1m"`
 	CleanupTimeout time.Duration `yaml:"cleanup_timeout" env-default:"1m"`
 	QueueSize      int           `yaml:"queue_size" env-default:"20"`
+}
+
+type ADB struct {
+	WaitTimeout  time.Duration `yaml:"wait_timeout" env-default:"30s"`
+	WaitInterval time.Duration `yaml:"wait_interval" env-default:"1s"`
+	Package      string        `yaml:"package" env-required:"true"`
+	Binary       string        `yaml:"binary" env-default:"adb"`
+	Serial       string        `yaml:"serial" env-required:"true"`
 }
 
 func MustLoad() *Config {
