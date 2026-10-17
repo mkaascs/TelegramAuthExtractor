@@ -11,7 +11,6 @@ import (
 type Device struct {
 	adb *ADB
 	cfg config.ADB
-	log *slog.Logger
 
 	sessionFile string
 }
@@ -19,7 +18,6 @@ type Device struct {
 func NewDevice(cfg config.ADB, log *slog.Logger) *Device {
 	return &Device{
 		adb:         NewADB(cfg.Serial, cfg.Binary),
-		log:         log,
 		cfg:         cfg,
 		sessionFile: fmt.Sprintf("/data/data/%s/files/tgnet.dat", cfg.Package),
 	}
