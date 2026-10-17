@@ -9,11 +9,12 @@ import (
 
 func ToDTOsSession(session *domain.Session) apiv1.Session {
 	return apiv1.Session{
-		CreatedAt: session.CreatedAt,
-		Error:     session.Error,
-		Id:        types.UUID(session.ID),
-		Phone:     session.Phone,
-		Status:    apiv1.SessionStatus(session.Status),
+		CreatedAt:    session.CreatedAt,
+		Error:        session.Error,
+		Id:           types.UUID(session.ID),
+		Phone:        session.Phone,
+		Status:       apiv1.SessionStatus(session.Status),
+		CodeAttempts: session.CodeAttempts,
 	}
 }
 

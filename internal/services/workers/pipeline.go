@@ -2,25 +2,48 @@ package workers
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"time"
+
+	"github.com/google/uuid"
 
 	"telegram-auth-extractor/internal/domain"
 )
 
-func (w *Worker) runPipeline(ctx context.Context, session *domain.Session, inputCh <-chan string) error {
+const maxCodeAttempts = 3
+
+func (w *Worker) runPipeline(ctx context.Context, session *domain.Session) error {
 	const fn = "services.workers.Worker.runPipeline"
 
 	if err := w.login(ctx, session); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
-	code, err := w.waitForCode(ctx, session, inputCh)
-	if err != nil {
-		return fmt.Errorf("%s: %w", fn, err)
-	}
+	for {
+		code, err := w.waitForCode(ctx, session)
+		if err != nil {
+			return fmt.Errorf("%s: %w", fn, err)
+		}
 
-	if err := w.enterCode(ctx, session, code); err != nil {
+		err = w.enterCode(ctx, session, code)
+		if err == nil {
+			break
+		}
+
+		if errors.Is(err, domain.ErrCodeInvalid) {
+			session.CodeAttempts++
+			if session.CodeAttempts >= maxCodeAttempts {
+				return fmt.Errorf("%s: %w", fn, domain.ErrTooManyCodeAttempts)
+			}
+
+			w.log.Info("wrong code, awaiting retry",
+				slog.Int("attempt", session.CodeAttempts),
+				slog.String("session_id", uuid.UUID(session.ID).String()))
+			continue
+		}
+
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
@@ -49,15 +72,19 @@ func (w *Worker) login(ctx context.Context, session *domain.Session) error {
 	return nil
 }
 
-func (w *Worker) waitForCode(ctx context.Context, session *domain.Session, inputCh <-chan string) (string, error) {
+func (w *Worker) waitForCode(ctx context.Context, session *domain.Session) (string, error) {
 	const fn = "services.workers.Worker.waitForCode"
 
 	if err := w.setStatus(ctx, session, domain.StatusWaitingForCode); err != nil {
 		return "", fmt.Errorf("%s: %w", fn, err)
 	}
 
+	ch := make(chan string, 1)
+	w.openInput(ch)
+	defer w.closeInput()
+
 	select {
-	case code := <-inputCh:
+	case code := <-ch:
 		return code, nil
 	case <-time.After(w.cfg.CodeWait):
 		return "", fmt.Errorf("%s: %w", fn, domain.ErrCodeTimeout)

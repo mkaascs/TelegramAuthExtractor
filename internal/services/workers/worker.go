@@ -122,17 +122,15 @@ func (w *Worker) process(ctx context.Context, session *domain.Session) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	inputCh := make(chan string, 1)
 	task := &waitingTask{
-		id:      sessionID,
-		inputCh: inputCh,
-		cancel:  cancel,
+		id:     sessionID,
+		cancel: cancel,
 	}
 
 	w.setCurrent(task)
 	defer w.setCurrent(nil)
 
-	err := w.runPipeline(ctx, session, inputCh)
+	err := w.runPipeline(ctx, session)
 
 	if err := w.runCleanup(session); err != nil {
 		log.Error("failed to cleanup device", slog.String("session_id", sessionID.String()), sloglib.Error(err))
@@ -163,6 +161,22 @@ func (w *Worker) setCurrent(task *waitingTask) {
 	w.mx.Lock()
 	defer w.mx.Unlock()
 	w.current = task
+}
+
+func (w *Worker) openInput(ch chan string) {
+	w.mx.Lock()
+	defer w.mx.Unlock()
+	if w.current != nil {
+		w.current.inputCh = ch
+	}
+}
+
+func (w *Worker) closeInput() {
+	w.mx.Lock()
+	defer w.mx.Unlock()
+	if w.current != nil {
+		w.current.inputCh = nil
+	}
 }
 
 func (w *Worker) setStatus(ctx context.Context, session *domain.Session, status domain.Status) error {

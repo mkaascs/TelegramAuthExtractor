@@ -9,7 +9,7 @@ worker:
   queue_size: 50
 adb:
   wait_timeout: 45s
-  wait_interval: 0.5s
+  wait_interval: 0.8s
   package: "org.telegram.messenger.web"
   binary: "/Users/makaasz/Library/Android/sdk/platform-tools/adb"
   serial: "emulator-5554"

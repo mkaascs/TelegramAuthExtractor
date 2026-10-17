@@ -8,13 +8,14 @@ import (
 type SessionID uuid.UUID
 
 type Session struct {
-	ID        SessionID
-	Phone     string
-	Status    Status
-	Result    *ExtractedData
-	Error     *string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           SessionID
+	Phone        string
+	Status       Status
+	Result       *ExtractedData
+	Error        *string
+	CodeAttempts int
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 func NewSession(phone string) *Session {

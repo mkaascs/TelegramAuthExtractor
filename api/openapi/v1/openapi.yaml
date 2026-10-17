@@ -246,6 +246,7 @@ components:
         - phone
         - status
         - created_at
+        - code_attempts
       properties:
         id:
           type: string
@@ -260,6 +261,8 @@ components:
           nullable: true
           description: Reason for the `failed` transition; omitted otherwise
           example: code_timeout
+        code_attempts:
+          type: integer
         created_at:
           type: string
           format: date-time

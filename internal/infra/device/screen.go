@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"telegram-auth-extractor/internal/domain"
 	"time"
 )
 
@@ -26,6 +27,10 @@ func phoneField() Matcher { return ByContentDesc("Phone number") }
 
 func codeScreen() Matcher {
 	return ByTextContains("Check your Telegram")
+}
+
+func codeErrorScreen() Matcher {
+	return ByTextContains("wrong code")
 }
 
 func successScreen() Matcher {
@@ -60,6 +65,9 @@ var dismissables = []struct {
 	{"permission dialog",
 		ByResourceID("com.android.permissioncontroller:id/permission_allow_button"),
 		ByResourceID("com.android.permissioncontroller:id/permission_allow_button")},
+	{"anr dialog",
+		ByTextContains("isn't responding"),
+		ByResourceID("android:id/aerr_wait")},
 }
 
 func (d *Device) dismissFound(ctx context.Context, elements []Element) {
@@ -238,8 +246,17 @@ func (d *Device) submitCode(ctx context.Context, code string) error {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
-	if _, err := d.waitOne(ctx, successScreen()); err != nil {
+	key, _, err := d.waitScreen(ctx, map[string]Matcher{
+		"success": successScreen(),
+		"error":   codeErrorScreen(),
+	})
+
+	if err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if key == "error" {
+		return fmt.Errorf("%s: %w", fn, domain.ErrCodeInvalid)
 	}
 
 	return nil
