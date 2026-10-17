@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/go-chi/chi/v5"
 	"log/slog"
 	"net/http"
 	"os"
@@ -44,8 +45,10 @@ func NewApp(cfg config.Config, log *slog.Logger) *App {
 	svc := sessions.NewService(repo, worker)
 
 	handlers := rest.NewHandler(svc)
+	router := chi.NewRouter()
+	apiv1.HandlerFromMuxWithBaseURL(handlers, router, "/api/v1")
 
-	srv := server.NewServer(cfg, apiv1.Handler(handlers))
+	srv := server.NewServer(cfg, router)
 
 	log.Info("application has been initialized")
 
