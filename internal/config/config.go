@@ -19,9 +19,10 @@ const (
 )
 
 type Config struct {
-	Env  EnvType `yaml:"env"`
-	Http Http    `yaml:"http_server"`
-	ADB  ADB     `yaml:"adb"`
+	Env      EnvType  `yaml:"env"`
+	Http     Http     `yaml:"http_server"`
+	ADB      ADB      `yaml:"adb"`
+	Telegram Telegram `yaml:"-"`
 }
 
 type Http struct {
