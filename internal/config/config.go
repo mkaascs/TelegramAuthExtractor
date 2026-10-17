@@ -19,9 +19,10 @@ const (
 )
 
 type Config struct {
-	Env  EnvType `yaml:"env"`
-	Http Http    `yaml:"http_server"`
-	ADB  ADB     `yaml:"adb"`
+	Env      EnvType  `yaml:"env"`
+	Http     Http     `yaml:"http_server"`
+	ADB      ADB      `yaml:"adb"`
+	Telegram Telegram `yaml:"-"`
 }
 
 type Http struct {
@@ -42,6 +43,11 @@ type ADB struct {
 	Package      string        `yaml:"package" env-required:"true"`
 	Binary       string        `yaml:"binary" env-default:"adb"`
 	Serial       string        `yaml:"serial" env-required:"true"`
+}
+
+type Telegram struct {
+	ApiHash string `yaml:"-" env:"TELEGRAM_API_HASH" env-required:"true"`
+	ApiID   int    `yaml:"-" env:"TELEGRAM_API_ID" env-required:"true"`
 }
 
 func MustLoad() *Config {
