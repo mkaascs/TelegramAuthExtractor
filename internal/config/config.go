@@ -44,6 +44,11 @@ type ADB struct {
 	Serial       string        `yaml:"serial" env-required:"true"`
 }
 
+type Telegram struct {
+	ApiHash string `yaml:"-" env:"TELEGRAM_API_HASH" env-required:"true"`
+	ApiID   int    `yaml:"-" env:"TELEGRAM_API_ID" env-required:"true"`
+}
+
 func MustLoad() *Config {
 	cfg, err := Load()
 	if err != nil {
