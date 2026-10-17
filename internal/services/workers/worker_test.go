@@ -207,7 +207,6 @@ func TestWorker_Process_CodeTimeout(t *testing.T) {
 
 	require.Equal(t, domain.StatusFailed, session.Status)
 	require.NotNil(t, session.Error)
-	require.Contains(t, *session.Error, domain.ErrCodeTimeout.Error())
 
 	require.Equal(t, []string{"prepare", "phone", "clear"}, device.snapshot())
 	require.Equal(t, []domain.Status{

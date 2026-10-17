@@ -14,6 +14,11 @@ tasks:
     deps: [ test ]
     cmds:
       - go tool cover -html=coverage.out -o coverage.html
+  test:reauth:
+    desc: "Test re‑auth based on the extracted data. env TELEGRAM_AUTH_KEY is required"
+    dotenv: [".env"]
+    cmds:
+      - go test -tags=integration -v -run TestVerifier_ReauthWithExtractedKey ./internal/infra/telegram/
   generate:api:
     desc: "Generate openapi code"
     cmds:
