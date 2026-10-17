@@ -1,0 +1,37 @@
+services:
+  redroid:
+    image: redroid/redroid:13.0.0
+    container_name: redroid
+    privileged: true
+    command:
+      - androidboot.redroid_width=720
+      - androidboot.redroid_height=1280
+      - androidboot.redroid_dpi=320
+    volumes:
+      - redroid-data:/data
+    networks:
+      - tg-net
+
+  extractor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: extractor
+    depends_on:
+      - redroid
+    environment:
+      CONFIG_PATH: /config/redroid.yaml
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+    ports:
+      - "8080:8080"
+    networks:
+      - tg-net
+    restart: unless-stopped
+
+volumes:
+  redroid-data:
+
+networks:
+  tg-net:
+    driver: bridge
