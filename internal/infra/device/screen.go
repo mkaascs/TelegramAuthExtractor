@@ -56,6 +56,7 @@ var dismissables = []struct {
 	{"update dialog", ByTextContains("Update Telegram"), ByText("Remind me later")},
 	{"call log request", ByTextContains("read the call log"), ByText("Continue")},
 	{"lock screen request", ByTextContains("shown on the lock screen"), ByText("Not now")},
+	{"receive calls request", ByTextContains("receive calls"), ByText("Continue")},
 	{"permission dialog",
 		ByResourceID("com.android.permissioncontroller:id/permission_allow_button"),
 		ByResourceID("com.android.permissioncontroller:id/permission_allow_button")},

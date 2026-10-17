@@ -14,6 +14,7 @@ const (
 	authKeySize = 256
 	keyIDSize   = 8
 	headerSize  = 8
+	clusterStep = 0x10C
 )
 
 type Parser struct{}
@@ -34,22 +35,29 @@ func (p *Parser) Parse(_ context.Context, data []byte) ([]domain.DatacenterKey, 
 
 	var keys []domain.DatacenterKey
 	seen := make(map[string]struct{})
+	lastOffset := -1
 
-	for index := 0; index+authKeySize+keyIDSize <= len(data); index++ {
-		key := data[index : index+authKeySize]
-		id := data[index+authKeySize : index+authKeySize+keyIDSize]
+	for i := 0; i+authKeySize+keyIDSize <= len(data); i++ {
+		key := data[i : i+authKeySize]
+		id := data[i+authKeySize : i+authKeySize+keyIDSize]
 
 		sum := sha1.Sum(key)
 		if !bytes.Equal(sum[12:20], id) {
 			continue
 		}
 
-		fp := string(id)
-		if _, ok := seen[fp]; ok {
+		if _, ok := seen[string(id)]; ok {
 			continue
 		}
 
-		seen[fp] = struct{}{}
+		seen[string(id)] = struct{}{}
+
+		if lastOffset >= 0 && i-lastOffset == clusterStep {
+			lastOffset = i
+			continue
+		}
+
+		lastOffset = i
 
 		keys = append(keys, domain.DatacenterKey{
 			DCID:    0,

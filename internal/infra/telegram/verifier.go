@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gotd/td/crypto"
@@ -16,7 +17,6 @@ import (
 
 	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/domain"
-	"telegram-auth-extractor/internal/lib/logging/sloglib"
 )
 
 const (
@@ -42,19 +42,39 @@ func NewVerifier(cfg config.Telegram, log *slog.Logger) *Verifier {
 func (v *Verifier) Verify(ctx context.Context, keys []domain.DatacenterKey) (*domain.ExtractedData, error) {
 	const fn = "adapters.telegram.Verifier.Verify"
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	type result struct {
+		data *domain.ExtractedData
+		err  error
+	}
+
+	var wg sync.WaitGroup
+	results := make(chan result, len(keys)*dcCount)
+
 	for _, key := range keys {
 		for dc := 1; dc <= dcCount; dc++ {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
+			wg.Add(1)
+			go func(key domain.DatacenterKey, dc int) {
+				defer wg.Done()
 
-			data, err := v.tryKey(ctx, key, dc)
-			if err == nil {
-				v.log.Info("home key found", slog.Int("dc", data.DCID), slog.Int64("user_id", data.UserID))
-				return data, nil
-			}
+				data, err := v.tryKey(ctx, key, dc)
+				results <- result{data, err}
+			}(key, dc)
+		}
+	}
 
-			v.log.Debug("key attempt failed", slog.Int("dc", dc), sloglib.Error(err))
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	for r := range results {
+		if r.err == nil {
+			v.log.Info("home key found", slog.Int("dc", r.data.DCID), slog.Int64("user_id", r.data.UserID))
+			cancel()
+			return r.data, nil
 		}
 	}
 
