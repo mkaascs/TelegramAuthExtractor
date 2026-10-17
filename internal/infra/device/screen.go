@@ -2,13 +2,10 @@ package device
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"telegram-auth-extractor/internal/domain"
 	"time"
 )
-
-var ErrScreenTimeout = errors.New("screen wait timeout")
 
 const (
 	keyMoveEnd = 123 // KEYCODE_MOVE_END
@@ -83,8 +80,8 @@ func (d *Device) dismissFound(ctx context.Context, elements []Element) {
 	}
 }
 
-func (d *Device) waitScreen(ctx context.Context, matchers map[string]Matcher) (string, Element, error) {
-	deadline := time.Now().Add(d.cfg.WaitTimeout)
+func (d *Device) waitScreenTimeout(ctx context.Context, matchers map[string]Matcher, timeout time.Duration) (string, Element, error) {
+	deadline := time.Now().Add(timeout)
 
 	ticker := time.NewTicker(d.cfg.WaitInterval)
 	defer ticker.Stop()
@@ -101,7 +98,7 @@ func (d *Device) waitScreen(ctx context.Context, matchers map[string]Matcher) (s
 		}
 
 		if time.Now().After(deadline) {
-			return "", Element{}, fmt.Errorf("waitScreen: %w", ErrScreenTimeout)
+			return "", Element{}, fmt.Errorf("waitScreen: %w", domain.ErrScreenTimeout)
 		}
 
 		select {
@@ -112,8 +109,8 @@ func (d *Device) waitScreen(ctx context.Context, matchers map[string]Matcher) (s
 	}
 }
 
-func (d *Device) waitOne(ctx context.Context, match Matcher) (Element, error) {
-	_, el, err := d.waitScreen(ctx, map[string]Matcher{"": match})
+func (d *Device) waitOneTimeout(ctx context.Context, match Matcher, timeout time.Duration) (Element, error) {
+	_, el, err := d.waitScreenTimeout(ctx, map[string]Matcher{"": match}, timeout)
 	return el, err
 }
 
@@ -149,10 +146,10 @@ func (d *Device) clearField(ctx context.Context) error {
 func (d *Device) ensureStarted(ctx context.Context) error {
 	const fn = "adapters.device.Device.ensureStarted"
 
-	key, el, err := d.waitScreen(ctx, map[string]Matcher{
+	key, el, err := d.waitScreenTimeout(ctx, map[string]Matcher{
 		"start": startScreen(),
 		"phone": phoneScreen(),
-	})
+	}, d.cfg.WaitTimeout)
 
 	if err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
@@ -163,7 +160,7 @@ func (d *Device) ensureStarted(ctx context.Context) error {
 			return fmt.Errorf("%s: %w", fn, err)
 		}
 
-		if _, err := d.waitOne(ctx, phoneScreen()); err != nil {
+		if _, err := d.waitOneTimeout(ctx, phoneScreen(), d.cfg.WaitTimeout); err != nil {
 			return fmt.Errorf("%s: %w", fn, err)
 		}
 	}
@@ -174,7 +171,7 @@ func (d *Device) ensureStarted(ctx context.Context) error {
 func (d *Device) submitPhone(ctx context.Context, phone string) error {
 	const fn = "adapters.device.Device.submitPhone"
 
-	if _, err := d.waitOne(ctx, phoneScreen()); err != nil {
+	if _, err := d.waitOneTimeout(ctx, phoneScreen(), d.cfg.PhoneCheckTimeout); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
@@ -219,7 +216,7 @@ func (d *Device) submitPhone(ctx context.Context, phone string) error {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
-	if _, err := d.waitOne(ctx, codeScreen()); err != nil {
+	if _, err := d.waitOneTimeout(ctx, codeScreen(), d.cfg.WaitTimeout); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
@@ -246,10 +243,10 @@ func (d *Device) submitCode(ctx context.Context, code string) error {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
-	key, _, err := d.waitScreen(ctx, map[string]Matcher{
+	key, _, err := d.waitScreenTimeout(ctx, map[string]Matcher{
 		"success": successScreen(),
 		"error":   codeErrorScreen(),
-	})
+	}, d.cfg.WaitTimeout)
 
 	if err != nil {
 		return fmt.Errorf("%s: %w", fn, err)

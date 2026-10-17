@@ -67,7 +67,7 @@ func (p *Parser) Parse(_ context.Context, data []byte) ([]domain.DatacenterKey, 
 	}
 
 	if len(keys) == 0 {
-		return nil, fmt.Errorf("%s: no auth keys found (not logged in?)", fn)
+		return nil, fmt.Errorf("%s: %w", fn, domain.ErrNoAuthKeys)
 	}
 
 	return keys, nil

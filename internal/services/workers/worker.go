@@ -197,7 +197,7 @@ func (w *Worker) setStatus(ctx context.Context, session *domain.Session, status 
 func (w *Worker) setFailedStatus(ctx context.Context, session *domain.Session, err error) error {
 	const fn = "services.workers.Worker.setFailedStatus"
 
-	message := err.Error()
+	message := domain.PublicErrMessage(err)
 	session.Status = domain.StatusFailed
 	session.Error = &message
 	if err := w.sessions.Update(ctx, session); err != nil {

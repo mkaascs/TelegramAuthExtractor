@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"telegram-auth-extractor/internal/config"
+	"telegram-auth-extractor/internal/domain"
 )
 
 type Device struct {
@@ -84,7 +85,7 @@ func (d *Device) SessionFile(ctx context.Context) ([]byte, error) {
 	}
 
 	if len(data) == 0 {
-		return nil, fmt.Errorf("%s: empty session file (not logged in?)", fn)
+		return nil, fmt.Errorf("%s: %w", fn, domain.ErrNoAuthKeys)
 	}
 
 	return data, nil

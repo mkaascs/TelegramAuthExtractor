@@ -78,7 +78,7 @@ func (v *Verifier) Verify(ctx context.Context, keys []domain.DatacenterKey) (*do
 		}
 	}
 
-	return nil, fmt.Errorf("%s: no working auth key among %d candidates", fn, len(keys))
+	return nil, fmt.Errorf("%s: %w: %d candidates", fn, domain.ErrVerificationFailed, len(keys))
 }
 
 func (v *Verifier) tryKey(ctx context.Context, key domain.DatacenterKey, dc int) (*domain.ExtractedData, error) {
