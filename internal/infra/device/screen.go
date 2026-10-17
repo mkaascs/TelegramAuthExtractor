@@ -22,6 +22,8 @@ func phoneScreen() Matcher {
 	return ByText("Your phone number")
 }
 
+func phoneField() Matcher { return ByContentDesc("Phone number") }
+
 func codeScreen() Matcher {
 	return ByTextContains("Check your Telegram")
 }
@@ -52,6 +54,8 @@ var dismissables = []struct {
 	close   Matcher
 }{
 	{"update dialog", ByTextContains("Update Telegram"), ByText("Remind me later")},
+	{"call log request", ByTextContains("read the call log"), ByText("Continue")},
+	{"lock screen request", ByTextContains("shown on the lock screen"), ByText("Not now")},
 	{"permission dialog",
 		ByResourceID("com.android.permissioncontroller:id/permission_allow_button"),
 		ByResourceID("com.android.permissioncontroller:id/permission_allow_button")},
@@ -163,6 +167,16 @@ func (d *Device) submitPhone(ctx context.Context, phone string) error {
 
 	if _, err := d.waitOne(ctx, phoneScreen()); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if numField, ok, err := d.find(ctx, phoneField()); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	} else if ok {
+		if err := d.tapElement(ctx, numField); err != nil {
+			return fmt.Errorf("%s: %w", fn, err)
+		}
+
+		_ = d.clearField(ctx)
 	}
 
 	ccField, ok, err := d.find(ctx, countryCodeField())

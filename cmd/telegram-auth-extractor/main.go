@@ -20,7 +20,7 @@ func main() {
 	log.Info("telegram-auth-extractor is starting", slog.String("env", string(cfg.Env)))
 
 	application := app.NewApp(*cfg, log)
-	go application.MustRun()
+	go application.MustRun(context.Background())
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)

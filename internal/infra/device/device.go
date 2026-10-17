@@ -3,8 +3,6 @@ package device
 import (
 	"context"
 	"fmt"
-	"log/slog"
-
 	"telegram-auth-extractor/internal/config"
 )
 
@@ -15,7 +13,7 @@ type Device struct {
 	sessionFile string
 }
 
-func NewDevice(cfg config.ADB, log *slog.Logger) *Device {
+func NewDevice(cfg config.ADB) *Device {
 	return &Device{
 		adb:         NewADB(cfg.Serial, cfg.Binary),
 		cfg:         cfg,
@@ -26,8 +24,10 @@ func NewDevice(cfg config.ADB, log *slog.Logger) *Device {
 func (d *Device) Prepare(ctx context.Context) error {
 	const fn = "adapters.device.Device.Prepare"
 
-	if err := d.adb.Connect(ctx); err != nil {
-		return fmt.Errorf("%s: %w", fn, err)
+	if d.cfg.NeedsConnect {
+		if err := d.adb.Connect(ctx); err != nil {
+			return fmt.Errorf("%s: %w", fn, err)
+		}
 	}
 
 	if err := d.adb.Root(ctx); err != nil {

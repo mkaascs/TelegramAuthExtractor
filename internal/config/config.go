@@ -22,6 +22,7 @@ type Config struct {
 	Env      EnvType  `yaml:"env"`
 	Http     Http     `yaml:"http_server"`
 	ADB      ADB      `yaml:"adb"`
+	Worker   Worker   `yaml:"worker"`
 	Telegram Telegram `yaml:"-"`
 }
 
@@ -43,6 +44,7 @@ type ADB struct {
 	Package      string        `yaml:"package" env-required:"true"`
 	Binary       string        `yaml:"binary" env-default:"adb"`
 	Serial       string        `yaml:"serial" env-required:"true"`
+	NeedsConnect bool          `yaml:"needs_connect"`
 }
 
 type Telegram struct {
