@@ -8,7 +8,6 @@ const (
 	StatusWaitingForCode Status = "waiting_for_code"
 	StatusEnteringCode   Status = "entering_code"
 	StatusExtracting     Status = "extracting"
-	StatusVerifying      Status = "verifying"
 	StatusCleanup        Status = "cleanup"
 	StatusDone           Status = "done"
 	StatusFailed         Status = "failed"

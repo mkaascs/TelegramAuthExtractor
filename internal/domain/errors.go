@@ -10,7 +10,6 @@ var (
 	// async
 	ErrCodeTimeout         = errors.New("code wait timeout")
 	ErrCodeInvalid         = errors.New("invalid confirmation code")
-	ErrDeviceUnavailable   = errors.New("device unavailable")
 	ErrTooManyCodeAttempts = errors.New("too many code attempts")
 	ErrNoAuthKeys          = errors.New("no auth keys found")
 	ErrVerificationFailed  = errors.New("verification failed")
@@ -27,8 +26,6 @@ func PublicErrMessage(err error) string {
 		return "no authorization data found on device"
 	case errors.Is(err, ErrVerificationFailed):
 		return "failed to verify extracted session"
-	case errors.Is(err, ErrDeviceUnavailable):
-		return "virtual device is unavailable"
 	case errors.Is(err, ErrScreenTimeout):
 		return "screen timeout. try again"
 	default:

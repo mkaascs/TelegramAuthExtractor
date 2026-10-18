@@ -40,7 +40,7 @@ func NewVerifier(cfg config.Telegram, log *slog.Logger) *Verifier {
 }
 
 func (v *Verifier) Verify(ctx context.Context, keys []domain.DatacenterKey) (*domain.ExtractedData, error) {
-	const fn = "adapters.telegram.Verifier.Verify"
+	const fn = "infra.telegram.Verifier.Verify"
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

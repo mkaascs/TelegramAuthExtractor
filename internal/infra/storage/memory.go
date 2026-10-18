@@ -5,6 +5,7 @@ import (
 	"github.com/google/uuid"
 	"sync"
 	"telegram-auth-extractor/internal/domain"
+	"time"
 )
 
 type MemoryRepository struct {
@@ -72,6 +73,7 @@ func (mr *MemoryRepository) Update(_ context.Context, session *domain.Session) e
 	}
 
 	cp := *session
+	cp.UpdatedAt = time.Now()
 	mr.sessions[id] = &cp
 	return nil
 }

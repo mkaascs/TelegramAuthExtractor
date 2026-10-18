@@ -26,7 +26,7 @@ func NewDevice(cfg config.ADB, log *slog.Logger) *Device {
 }
 
 func (d *Device) Prepare(ctx context.Context) error {
-	const fn = "adapters.device.Device.Prepare"
+	const fn = "infra.device.Device.Prepare"
 	log := d.log.With(slog.String("fn", fn),
 		slog.String("device", d.cfg.Serial))
 
@@ -50,7 +50,7 @@ func (d *Device) Prepare(ctx context.Context) error {
 }
 
 func (d *Device) PrepareTelegram(ctx context.Context) error {
-	const fn = "adapters.device.Device.PrepareTelegram"
+	const fn = "infra.device.Device.PrepareTelegram"
 
 	if err := d.adb.ForceStop(ctx, d.cfg.Package); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
@@ -68,7 +68,7 @@ func (d *Device) PrepareTelegram(ctx context.Context) error {
 }
 
 func (d *Device) EnterPhone(ctx context.Context, phone string) error {
-	const fn = "adapters.device.Device.EnterPhone"
+	const fn = "infra.device.Device.EnterPhone"
 
 	if err := d.submitPhone(ctx, phone); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
@@ -78,7 +78,7 @@ func (d *Device) EnterPhone(ctx context.Context, phone string) error {
 }
 
 func (d *Device) EnterCode(ctx context.Context, code string) error {
-	const fn = "adapters.device.Device.EnterCode"
+	const fn = "infra.device.Device.EnterCode"
 
 	if err := d.submitCode(ctx, code); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
@@ -88,7 +88,7 @@ func (d *Device) EnterCode(ctx context.Context, code string) error {
 }
 
 func (d *Device) SessionFile(ctx context.Context) ([]byte, error) {
-	const fn = "adapters.device.Device.SessionFile"
+	const fn = "infra.device.Device.SessionFile"
 
 	data, err := d.adb.ShellRaw(ctx, "su", "0", "cat", d.sessionFile)
 	if err != nil {
@@ -103,7 +103,7 @@ func (d *Device) SessionFile(ctx context.Context) ([]byte, error) {
 }
 
 func (d *Device) Clear(ctx context.Context) error {
-	const fn = "adapters.device.Device.Clear"
+	const fn = "infra.device.Device.Clear"
 
 	if err := d.adb.ClearApp(ctx, d.cfg.Package); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)

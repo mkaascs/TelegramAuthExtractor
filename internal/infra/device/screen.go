@@ -147,7 +147,7 @@ func (d *Device) clearField(ctx context.Context) error {
 }
 
 func (d *Device) ensureStarted(ctx context.Context) error {
-	const fn = "adapters.device.Device.ensureStarted"
+	const fn = "infra.device.Device.ensureStarted"
 
 	key, el, err := d.waitScreenTimeout(ctx, map[string]Matcher{
 		"start": startScreen(),
@@ -172,7 +172,7 @@ func (d *Device) ensureStarted(ctx context.Context) error {
 }
 
 func (d *Device) submitPhone(ctx context.Context, phone string) error {
-	const fn = "adapters.device.Device.submitPhone"
+	const fn = "infra.device.Device.submitPhone"
 
 	if _, err := d.waitOneTimeout(ctx, phoneScreen(), d.cfg.PhoneCheckTimeout); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
@@ -227,7 +227,7 @@ func (d *Device) submitPhone(ctx context.Context, phone string) error {
 }
 
 func (d *Device) submitCode(ctx context.Context, code string) error {
-	const fn = "adapters.device.Device.submitCode"
+	const fn = "infra.device.Device.submitCode"
 
 	field, ok, err := d.find(ctx, codeField())
 	if err != nil {

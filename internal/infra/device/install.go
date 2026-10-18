@@ -17,7 +17,7 @@ const (
 )
 
 func (d *Device) ensureTelegram(ctx context.Context) error {
-	const fn = "adapters.device.Device.ensureTelegram"
+	const fn = "infra.device.Device.ensureTelegram"
 	log := d.log.With(slog.String("fn", fn), slog.String("serial", d.cfg.Serial))
 
 	installed, err := d.adb.IsInstalled(ctx, d.cfg.Package)

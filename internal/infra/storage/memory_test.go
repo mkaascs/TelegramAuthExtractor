@@ -170,7 +170,7 @@ func TestMemoryRepository_ConcurrentAccess(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			if got, err := repo.Get(ctx, id); err == nil {
-				got.Status = domain.StatusVerifying
+				got.Status = domain.StatusExtracting
 			}
 		}()
 
