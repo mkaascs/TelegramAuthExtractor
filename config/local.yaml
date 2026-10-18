@@ -12,6 +12,7 @@ adb:
   phone_check_timeout: 1m
   wait_interval: 0.8s
   package: "org.telegram.messenger.web"
+  apk_url: "https://telegram.org/dl/android/apk"
   binary: "/Users/makaasz/Library/Android/sdk/platform-tools/adb"
   serial: "emulator-5554"
   needs_connect: false
