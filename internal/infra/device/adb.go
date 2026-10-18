@@ -109,6 +109,28 @@ func (a *ADB) ClearApp(ctx context.Context, pkg string) error {
 	return nil
 }
 
+func (a *ADB) Install(ctx context.Context, apkPath string) error {
+	out, err := a.run(ctx, "install", "-r", apkPath)
+	if err != nil {
+		return fmt.Errorf("adb install: %w", err)
+	}
+
+	if !strings.Contains(out, "Success") {
+		return fmt.Errorf("adb install: %s", out)
+	}
+
+	return nil
+}
+
+func (a *ADB) IsInstalled(ctx context.Context, pkg string) (bool, error) {
+	out, err := a.Shell(ctx, "pm", "list", "packages", pkg)
+	if err != nil {
+		return false, fmt.Errorf("adb pm list packages: %w", err)
+	}
+
+	return strings.Contains(out, "package:"+pkg), nil
+}
+
 func (a *ADB) Shell(ctx context.Context, args ...string) (string, error) {
 	return a.run(ctx, append([]string{"shell"}, args...)...)
 }
