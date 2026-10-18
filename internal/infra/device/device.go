@@ -3,6 +3,7 @@ package device
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/domain"
 )
@@ -10,28 +11,38 @@ import (
 type Device struct {
 	adb *ADB
 	cfg config.ADB
+	log *slog.Logger
 
 	sessionFile string
 }
 
-func NewDevice(cfg config.ADB) *Device {
+func NewDevice(cfg config.ADB, log *slog.Logger) *Device {
 	return &Device{
 		adb:         NewADB(cfg.Serial, cfg.Binary),
 		cfg:         cfg,
+		log:         log,
 		sessionFile: fmt.Sprintf("/data/data/%s/files/tgnet.dat", cfg.Package),
 	}
 }
 
 func (d *Device) Prepare(ctx context.Context) error {
 	const fn = "adapters.device.Device.Prepare"
+	log := d.log.With(slog.String("fn", fn),
+		slog.String("device", d.cfg.Serial))
 
 	if d.cfg.NeedsConnect {
+		log.Info("connecting to device")
 		if err := d.adb.Connect(ctx); err != nil {
+			log.Error("failed to connect to device")
 			return fmt.Errorf("%s: %w", fn, err)
 		}
 	}
 
 	if err := d.adb.Root(ctx); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if err := d.ensureTelegram(ctx); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 

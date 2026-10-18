@@ -35,7 +35,7 @@ type App struct {
 func NewApp(cfg config.Config, log *slog.Logger) *App {
 	repo := storage.NewMemoryRepository()
 
-	dev := device.NewDevice(cfg.ADB)
+	dev := device.NewDevice(cfg.ADB, log)
 	worker := workers.NewWorker(repo,
 		dev,
 		tgnet.NewParser(),
@@ -70,7 +70,7 @@ func (a *App) Run(ctx context.Context) error {
 	a.cancelWorker = cancel
 
 	go a.worker.Run(workerCtx)
-	a.log.Info("worker is running")
+	a.log.Info("worker is running", slog.Int("queue_size", a.cfg.Worker.QueueSize))
 
 	a.log.Info("http server is running", slog.Int("port", int(a.cfg.Http.Port)))
 	return a.server.Run()

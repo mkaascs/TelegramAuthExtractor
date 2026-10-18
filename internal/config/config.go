@@ -43,6 +43,7 @@ type ADB struct {
 	PhoneCheckTimeout time.Duration `yaml:"phone_check_timeout" env-default:"30s"`
 	WaitInterval      time.Duration `yaml:"wait_interval" env-default:"1s"`
 	Package           string        `yaml:"package" env-required:"true"`
+	ApkURL            string        `yaml:"apk_url" env-required:"true"`
 	Binary            string        `yaml:"binary" env-default:"adb"`
 	Serial            string        `yaml:"serial" env-required:"true"`
 	NeedsConnect      bool          `yaml:"needs_connect"`

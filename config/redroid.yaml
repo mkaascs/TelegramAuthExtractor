@@ -12,6 +12,7 @@ adb:
   phone_check_timeout: 1m
   wait_interval: 0.8s
   package: "org.telegram.messenger.web"
+  apk_url: "https://telegram.org/dl/android/apk"
   binary: "adb"
   serial: "redroid:5555"
   needs_connect: true
