@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-chi/chi/v5"
 	"log/slog"
 	"net/http"
 	"os"
-	apiv1 "telegram-auth-extractor/gen/rest/v1"
 	"telegram-auth-extractor/internal/app/server"
 	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/delivery/rest"
@@ -43,12 +41,7 @@ func NewApp(cfg config.Config, log *slog.Logger) *App {
 		log, cfg.Worker)
 
 	svc := sessions.NewService(repo, worker)
-
-	handlers := rest.NewHandler(svc)
-	router := chi.NewRouter()
-	apiv1.HandlerFromMuxWithBaseURL(handlers, router, "/api/v1")
-
-	srv := server.NewServer(cfg, router)
+	srv := server.NewServer(rest.NewHandler(svc), cfg, log)
 
 	log.Info("application has been initialized")
 
