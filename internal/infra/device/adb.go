@@ -89,7 +89,10 @@ func (a *ADB) ForceStop(ctx context.Context, pkg string) error {
 }
 
 func (a *ADB) StartApp(ctx context.Context, pkg string) error {
-	if _, err := a.Shell(ctx, "monkey", "-p", pkg, "-c", "android.intent.category.LAUNCHER", "1"); err != nil {
+	if _, err := a.Shell(ctx, "monkey", "-p", pkg,
+		"-c", "android.intent.category.LAUNCHER",
+		"--pct-syskeys", "0",
+		"1"); err != nil {
 		return fmt.Errorf("adb start %s: %w", pkg, err)
 	}
 

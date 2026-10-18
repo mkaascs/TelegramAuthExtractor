@@ -65,6 +65,9 @@ var dismissables = []struct {
 	{"anr dialog",
 		ByTextContains("isn't responding"),
 		ByResourceID("android:id/aerr_wait")},
+	{"confirm number",
+		ByTextContains("correct number"),
+		ByText("Yes")},
 }
 
 func (d *Device) dismissFound(ctx context.Context, elements []Element) {
