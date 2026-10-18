@@ -1,6 +1,6 @@
 services:
   redroid:
-    image: redroid/redroid:13.0.0
+    image: redroid/redroid:13.0.0-latest
     container_name: redroid
     privileged: true
     command:
@@ -9,6 +9,7 @@ services:
       - androidboot.redroid_dpi=320
     volumes:
       - redroid-data:/data
+      - /dev/binderfs:/dev/binderfs
     networks:
       - tg-net
 
