@@ -20,7 +20,6 @@ import (
 
 type Server struct {
 	http *http.Server
-	log  *slog.Logger
 }
 
 func NewServer(handlers apiv1.ServerInterface, cfg config.Config, lg *slog.Logger) *Server {
@@ -86,13 +85,16 @@ func validationErrorHandler(w http.ResponseWriter, message string, statusCode in
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
-	code := "error"
-	if statusCode == http.StatusBadRequest {
+	var code string
+	switch statusCode {
+	case http.StatusBadRequest:
 		code = "bad_request"
 		message = cleanValidationMessage(message)
-	} else if statusCode == http.StatusNotFound {
+	case http.StatusNotFound:
 		code = "not_found"
 		message = "resource not found"
+	default:
+		code = "error"
 	}
 
 	_ = json.NewEncoder(w).Encode(apiv1.Error{
