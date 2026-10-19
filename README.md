@@ -121,7 +121,11 @@ adb:
 
 ## API
 
-Все маршруты смонтированы под `/api/v1`. REST-слой генерируется из [`api/openapi/v1/openapi.yaml`](api/openapi/v1/openapi.yaml) — `task generate:api` перегенерирует код сервера в `gen/rest/v1/`. Открой спеку в [Swagger Editor](https://editor.swagger.io), чтобы просмотреть интерактивно.
+Все маршруты смонтированы под `/api/v1`. REST-слой генерируется из [`api/openapi/v1/openapi.yaml`](api/openapi/v1/openapi.yaml) — `task generate:api` перегенерирует код сервера в `gen/rest/v1/`.
+
+Запросы валидируются против спеки на лету (`oapi-codegen/nethttp-middleware`): некорректное тело или значение, не прошедшее `pattern`/`required`, отклоняется с `400` до того, как дойдёт до хендлера.
+
+Интерактивная документация — Swagger UI на `/swagger/` (недоступен в `prod`), спека отдаётся на `/swagger/openapi.json`.
 
 ### Sessions
 
