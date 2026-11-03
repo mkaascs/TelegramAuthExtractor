@@ -16,3 +16,6 @@ adb:
   binary: "/Users/makaasz/Library/Android/sdk/platform-tools/adb"
   serial: "emulator-5554"
   needs_connect: false
+postgres:
+  addr: "localhost:5432"
+  connection_timeout: 5s

@@ -24,6 +24,7 @@ type Config struct {
 	Http     Http     `yaml:"http_server"`
 	ADB      ADB      `yaml:"adb"`
 	Worker   Worker   `yaml:"worker"`
+	Postgres Postgres `yaml:"postgres"`
 	Telegram Telegram `yaml:"-"`
 }
 
@@ -48,6 +49,13 @@ type ADB struct {
 	Binary            string        `yaml:"binary" env-default:"adb"`
 	Serial            string        `yaml:"serial" env-required:"true"`
 	NeedsConnect      bool          `yaml:"needs_connect"`
+}
+
+type Postgres struct {
+	Addr              string        `yaml:"addr" env-required:"true"`
+	Username          string        `yaml:"-" env:"POSTGRES_USERNAME" env-required:"true"`
+	Password          string        `yaml:"-" env:"POSTGRES_PASSWORD" env-required:"true"`
+	ConnectionTimeout time.Duration `yaml:"connection_timeout" env-default:"5s"`
 }
 
 type Telegram struct {
