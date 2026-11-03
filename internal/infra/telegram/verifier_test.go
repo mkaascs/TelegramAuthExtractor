@@ -6,7 +6,6 @@ package telegram
 import (
 	"context"
 	"encoding/base64"
-	"github.com/stretchr/testify/require"
 	"io"
 	"log/slog"
 	"os"
@@ -14,6 +13,8 @@ import (
 	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/domain"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestVerifier_ReauthWithExtractedKey(t *testing.T) {

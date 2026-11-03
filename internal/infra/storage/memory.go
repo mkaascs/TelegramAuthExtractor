@@ -2,10 +2,11 @@ package storage
 
 import (
 	"context"
-	"github.com/google/uuid"
 	"sync"
 	"telegram-auth-extractor/internal/domain"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type MemoryRepository struct {

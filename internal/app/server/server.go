@@ -4,10 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	nethttpmiddleware "github.com/oapi-codegen/nethttp-middleware"
-	"github.com/swaggest/swgui/v5emb"
 	"log"
 	"log/slog"
 	"net/http"
@@ -16,6 +12,11 @@ import (
 	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/delivery/rest/middlewares"
 	"telegram-auth-extractor/internal/lib/logging/sloglib"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	nethttpmiddleware "github.com/oapi-codegen/nethttp-middleware"
+	"github.com/swaggest/swgui/v5emb"
 )
 
 type Server struct {
@@ -104,10 +105,10 @@ func validationErrorHandler(w http.ResponseWriter, message string, statusCode in
 }
 
 func cleanValidationMessage(raw string) string {
-	if index := strings.Index(raw, `Error at "/`); index != -1 {
-		rest := raw[index+len(`Error at "/`):]
-		if j := strings.Index(rest, `"`); j != -1 {
-			return "invalid field: " + rest[:j]
+	if _, after, ok := strings.Cut(raw, `Error at "/`); ok {
+		rest := after
+		if before, _, ok := strings.Cut(rest, `"`); ok {
+			return "invalid field: " + before
 		}
 	}
 

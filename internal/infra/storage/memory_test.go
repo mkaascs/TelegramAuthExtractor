@@ -2,11 +2,12 @@ package storage
 
 import (
 	"context"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 	"sync"
 	"telegram-auth-extractor/internal/domain"
 	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 func idOf(s *domain.Session) uuid.UUID { return uuid.UUID(s.ID) }

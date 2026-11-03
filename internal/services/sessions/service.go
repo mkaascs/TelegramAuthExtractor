@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
 	"sync"
 	"telegram-auth-extractor/internal/domain"
+
+	"github.com/google/uuid"
 )
 
 type Repository interface {

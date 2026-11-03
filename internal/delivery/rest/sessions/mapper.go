@@ -2,9 +2,10 @@ package sessions
 
 import (
 	"errors"
-	"github.com/oapi-codegen/runtime/types"
 	apiv1 "telegram-auth-extractor/gen/rest/v1"
 	"telegram-auth-extractor/internal/domain"
+
+	"github.com/oapi-codegen/runtime/types"
 )
 
 func ToDTOsSession(session *domain.Session) apiv1.Session {

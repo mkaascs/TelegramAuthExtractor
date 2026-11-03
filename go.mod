@@ -4,7 +4,7 @@ go 1.26.2
 
 require (
 	github.com/getkin/kin-openapi v0.142.0
-	github.com/go-chi/chi/v5 v5.4.0
+	github.com/go-chi/chi/v5 v5.4.1-0.20261013232336-607557061251
 	github.com/google/uuid v1.6.0
 	github.com/gotd/td v0.162.0
 	github.com/ilyakaznacheev/cleanenv v1.5.0

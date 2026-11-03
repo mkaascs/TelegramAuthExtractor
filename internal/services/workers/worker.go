@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
 	"log/slog"
 	"sync"
 	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/domain"
 	"telegram-auth-extractor/internal/lib/logging/sloglib"
+
+	"github.com/google/uuid"
 )
 
 type Repository interface {

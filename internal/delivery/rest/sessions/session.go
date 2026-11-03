@@ -2,9 +2,10 @@ package sessions
 
 import (
 	"context"
-	"github.com/google/uuid"
 	apiv1 "telegram-auth-extractor/gen/rest/v1"
 	"telegram-auth-extractor/internal/domain"
+
+	"github.com/google/uuid"
 )
 
 type SessionInterface interface {
