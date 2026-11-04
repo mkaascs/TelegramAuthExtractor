@@ -46,13 +46,8 @@ func (m mockResultRepo) GetBySession(ctx context.Context, id uuid.UUID) (*domain
 }
 
 type mockProcessor struct {
-	enqueueFn    func(s *domain.Session)
 	submitCodeFn func(id uuid.UUID, code string) error
 	cancelFn     func(id uuid.UUID) error
-}
-
-func (m mockProcessor) Enqueue(s *domain.Session) {
-	m.enqueueFn(s)
 }
 
 func (m mockProcessor) SubmitCode(id uuid.UUID, c string) error {
@@ -67,8 +62,7 @@ func TestService_CreateSession(t *testing.T) {
 	ctx := context.Background()
 	const phone = "+79991234567"
 
-	t.Run("new phone -> created, enqueued", func(t *testing.T) {
-		var enqueued bool
+	t.Run("new phone -> created", func(t *testing.T) {
 		svc := NewService(
 			mockRepo{
 				createOrGetFn: func(_ context.Context, s *domain.Session) (*domain.Session, bool, error) {
@@ -76,9 +70,7 @@ func TestService_CreateSession(t *testing.T) {
 				},
 			},
 			mockResultRepo{},
-			mockProcessor{
-				enqueueFn: func(_ *domain.Session) { enqueued = true },
-			},
+			mockProcessor{},
 			config.Service{},
 		)
 
@@ -86,10 +78,9 @@ func TestService_CreateSession(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, created)
 		require.Equal(t, phone, session.Phone)
-		require.True(t, enqueued, "новая задача должна попасть в очередь")
 	})
 
-	t.Run("active exists -> idempotent, not enqueued", func(t *testing.T) {
+	t.Run("active exists -> not created", func(t *testing.T) {
 		existing := domain.NewSession(phone, 0)
 		svc := NewService(
 			mockRepo{
@@ -98,11 +89,7 @@ func TestService_CreateSession(t *testing.T) {
 				},
 			},
 			mockResultRepo{},
-			mockProcessor{
-				enqueueFn: func(_ *domain.Session) {
-					t.Fatal("enqueue не должен вызываться для существующей задачи")
-				},
-			},
+			mockProcessor{},
 			config.Service{},
 		)
 
@@ -112,7 +99,7 @@ func TestService_CreateSession(t *testing.T) {
 		require.Equal(t, idOf(existing), idOf(session))
 	})
 
-	t.Run("repo error -> propagated, not enqueued", func(t *testing.T) {
+	t.Run("repo error -> propagated", func(t *testing.T) {
 		wantErr := errors.New("insert failed")
 		svc := NewService(
 			mockRepo{
@@ -121,9 +108,7 @@ func TestService_CreateSession(t *testing.T) {
 				},
 			},
 			mockResultRepo{},
-			mockProcessor{
-				enqueueFn: func(_ *domain.Session) { t.Fatal("enqueue не должен вызываться при ошибке") },
-			},
+			mockProcessor{},
 			config.Service{},
 		)
 
@@ -397,23 +382,23 @@ func (r *stubRepo) Delete(_ context.Context, id uuid.UUID) error {
 func TestService_CreateSession_ConcurrentDedup(t *testing.T) {
 	ctx := context.Background()
 
-	var enqueued atomic.Int64
-	svc := NewService(newStubRepo(), mockResultRepo{}, mockProcessor{
-		enqueueFn: func(_ *domain.Session) { enqueued.Add(1) },
-	}, config.Service{})
+	svc := NewService(newStubRepo(), mockResultRepo{}, mockProcessor{}, config.Service{})
 
+	var created atomic.Int64
 	const n = 50
 	var wg sync.WaitGroup
 	wg.Add(n)
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			_, _, _ = svc.CreateSession(ctx, "+79991234567")
+			if _, c, _ := svc.CreateSession(ctx, "+79991234567"); c {
+				created.Add(1)
+			}
 		}()
 	}
 
 	wg.Wait()
 
-	require.Equal(t, int64(1), enqueued.Load(),
+	require.Equal(t, int64(1), created.Load(),
 		"на один номер должна создаться ровно одна задача, несмотря на гонку")
 }

@@ -21,7 +21,6 @@ type ResultRepository interface {
 }
 
 type Processor interface {
-	Enqueue(session *domain.Session)
 	SubmitCode(sessionID uuid.UUID, code string) error
 	Cancel(sessionID uuid.UUID) error
 }
@@ -45,10 +44,6 @@ func (s *Service) CreateSession(ctx context.Context, phone string) (*domain.Sess
 	stored, created, err := s.sessions.CreateOrGetActive(ctx, session)
 	if err != nil {
 		return nil, false, fmt.Errorf("%s: %w", fn, err)
-	}
-
-	if created {
-		s.processor.Enqueue(stored)
 	}
 
 	return stored, created, nil

@@ -9,6 +9,9 @@ service:
     code_wait: 2m
     cleanup_timeout: 30s
     queue_size: 50
+  dispatcher:
+    poll_interval: 2s
+    batch_size: 10
 adb:
   wait_timeout: 30s
   phone_check_timeout: 1m

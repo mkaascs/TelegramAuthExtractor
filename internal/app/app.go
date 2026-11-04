@@ -24,12 +24,13 @@ type App struct {
 	cfg config.Config
 	log *slog.Logger
 
-	server *server.Server
-	worker *workers.Worker
-	device *device.Device
-	db     *postgres.DB
+	server     *server.Server
+	worker     *workers.Worker
+	dispatcher *workers.Dispatcher
+	device     *device.Device
+	db         *postgres.DB
 
-	cancelWorker context.CancelFunc
+	cancelWorkers context.CancelFunc
 }
 
 func NewApp(cfg config.Config, log *slog.Logger) *App {
@@ -50,18 +51,21 @@ func NewApp(cfg config.Config, log *slog.Logger) *App {
 		telegram.NewVerifier(cfg.Telegram, log),
 		log, cfg.Service.Worker)
 
+	dispatcher := workers.NewDispatcher(sessionRepo, worker, log, cfg.Service.Dispatcher)
+
 	svc := sessions.NewService(sessionRepo, resultRepo, worker, cfg.Service)
 	srv := server.NewServer(rest.NewHandler(svc), cfg, log)
 
 	log.Info("application has been initialized")
 
 	return &App{
-		cfg:    cfg,
-		log:    log,
-		server: srv,
-		worker: worker,
-		device: dev,
-		db:     pg,
+		cfg:        cfg,
+		log:        log,
+		server:     srv,
+		worker:     worker,
+		dispatcher: dispatcher,
+		device:     dev,
+		db:         pg,
 	}
 }
 
@@ -71,10 +75,19 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	workerCtx, cancel := context.WithCancel(context.Background())
-	a.cancelWorker = cancel
+	a.cancelWorkers = cancel
+
+	if err := a.dispatcher.Recover(workerCtx); err != nil {
+		cancel()
+		return fmt.Errorf("recover sessions: %w", err)
+	}
 
 	go a.worker.Run(workerCtx)
-	a.log.Info("worker is running", slog.Int("queue_size", a.cfg.Service.Worker.QueueSize))
+	go a.dispatcher.Run(workerCtx)
+
+	a.log.Info("worker and dispatcher are running",
+		slog.Int("queue_size", a.cfg.Service.Worker.QueueSize),
+		slog.Int("batch_size", a.cfg.Service.Dispatcher.BatchSize))
 
 	a.log.Info("http server is running", slog.Int("port", int(a.cfg.Http.Port)))
 	return a.server.Run()
@@ -88,9 +101,9 @@ func (a *App) MustRun(ctx context.Context) {
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
-	a.log.Info("worker is stopping")
-	if a.cancelWorker != nil {
-		a.cancelWorker()
+	a.log.Info("worker and dispatcher are stopping")
+	if a.cancelWorkers != nil {
+		a.cancelWorkers()
 	}
 
 	a.log.Info("http server is stopping")

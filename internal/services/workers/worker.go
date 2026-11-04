@@ -71,6 +71,10 @@ func (w *Worker) Enqueue(session *domain.Session) {
 	w.queue <- session
 }
 
+func (w *Worker) FreeSlots() int {
+	return cap(w.queue) - len(w.queue)
+}
+
 func (w *Worker) SubmitCode(sessionID uuid.UUID, code string) error {
 	const fn = "services.workers.Worker.SubmitCode"
 

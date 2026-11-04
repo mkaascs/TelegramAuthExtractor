@@ -208,11 +208,11 @@ components:
       description: Stage in the task lifecycle
       enum:
         - pending
+        - queued
         - logging_in
         - waiting_for_code
         - entering_code
         - extracting
-        - verifying
         - cleanup
         - done
         - failed

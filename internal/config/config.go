@@ -37,12 +37,18 @@ type Http struct {
 type Service struct {
 	SessionTTL time.Duration `yaml:"session_ttl" env-default:"168h"`
 	Worker     Worker        `yaml:"worker"`
+	Dispatcher Dispatcher    `yaml:"dispatcher"`
 }
 
 type Worker struct {
 	CodeWait       time.Duration `yaml:"code_wait" env-default:"1m"`
 	CleanupTimeout time.Duration `yaml:"cleanup_timeout" env-default:"1m"`
 	QueueSize      int           `yaml:"queue_size" env-default:"20"`
+}
+
+type Dispatcher struct {
+	PollInterval time.Duration `yaml:"poll_interval" env-default:"2s"`
+	BatchSize    int           `yaml:"batch_size" env-default:"10"`
 }
 
 type ADB struct {

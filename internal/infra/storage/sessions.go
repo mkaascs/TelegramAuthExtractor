@@ -76,10 +76,12 @@ func (s *Session) Get(ctx context.Context, sessionID uuid.UUID) (*domain.Session
 
 	session, err := scanSession(s.pool.QueryRow(ctx,
 		`SELECT `+sessionColumns+` FROM sessions WHERE id = $1`, sessionID))
+
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrSessionNotFound
 		}
+
 		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
@@ -92,6 +94,7 @@ func (s *Session) Update(ctx context.Context, session *domain.Session) error {
 	tag, err := s.pool.Exec(ctx,
 		`UPDATE sessions SET status = $1, error = $2, code_attempts = $3 WHERE id = $4`,
 		string(session.Status), session.Error, session.CodeAttempts, uuid.UUID(session.ID))
+
 	if err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
@@ -110,7 +113,10 @@ func (s *Session) Complete(ctx context.Context, session *domain.Session, result 
 	if err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO results(session_id, dc_id, auth_key, user_id) VALUES ($1, $2, $3, $4)`,
@@ -121,6 +127,7 @@ func (s *Session) Complete(ctx context.Context, session *domain.Session, result 
 	tag, err := tx.Exec(ctx,
 		`UPDATE sessions SET status = $1 WHERE id = $2`,
 		string(domain.StatusDone), uuid.UUID(session.ID))
+
 	if err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
@@ -141,6 +148,74 @@ func (s *Session) Delete(ctx context.Context, sessionID uuid.UUID) error {
 	const fn = "infra.storage.Session.Delete"
 
 	if _, err := s.pool.Exec(ctx, `DELETE FROM sessions WHERE id = $1`, sessionID); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	return nil
+}
+
+func (s *Session) ClaimPending(ctx context.Context, limit int) ([]*domain.Session, error) {
+	const fn = "infra.storage.Session.ClaimPending"
+
+	rows, err := s.pool.Query(ctx,
+		`UPDATE sessions SET status = $1
+		 WHERE id IN (
+		     SELECT id FROM sessions WHERE status = $2 ORDER BY created_at LIMIT $3
+		 ) RETURNING `+sessionColumns,
+		string(domain.StatusQueued), string(domain.StatusPending), limit)
+
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	defer rows.Close()
+
+	var sessions []*domain.Session
+	for rows.Next() {
+		session, err := scanSession(rows)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", fn, err)
+		}
+
+		sessions = append(sessions, session)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	return sessions, nil
+}
+
+func (s *Session) RecoverStale(ctx context.Context) error {
+	const fn = "infra.storage.Session.RecoverStale"
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	if _, err := tx.Exec(ctx,
+		`UPDATE sessions SET status = $1 WHERE status = $2`,
+		string(domain.StatusPending), string(domain.StatusQueued)); err != nil {
+
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	message := domain.PublicErrMessage(domain.ErrServiceRestarted)
+	if _, err := tx.Exec(ctx,
+		`UPDATE sessions SET status = $1, error = $2
+		 WHERE status IN ('logging_in', 'waiting_for_code', 'entering_code', 'extracting', 'cleanup')`,
+		string(domain.StatusFailed), message); err != nil {
+
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
