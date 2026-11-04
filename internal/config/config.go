@@ -53,6 +53,7 @@ type ADB struct {
 
 type Postgres struct {
 	Addr              string        `yaml:"addr" env-required:"true"`
+	DB                string        `yaml:"-" env:"POSTGRES_DBNAME" env-required:"true"`
 	Username          string        `yaml:"-" env:"POSTGRES_USERNAME" env-required:"true"`
 	Password          string        `yaml:"-" env:"POSTGRES_PASSWORD" env-required:"true"`
 	ConnectionTimeout time.Duration `yaml:"connection_timeout" env-default:"5s"`

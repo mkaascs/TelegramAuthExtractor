@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"telegram-auth-extractor/internal/app/postgres"
 	"telegram-auth-extractor/internal/app/server"
 	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/delivery/rest"
@@ -32,6 +33,9 @@ type App struct {
 
 func NewApp(cfg config.Config, log *slog.Logger) *App {
 	repo := storage.NewMemoryRepository()
+	pg, _ := postgres.NewDB(cfg.Postgres, log)
+
+	pg.MustConnect()
 
 	dev := device.NewDevice(cfg.ADB, log)
 	worker := workers.NewWorker(repo,
