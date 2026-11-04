@@ -13,9 +13,13 @@ import (
 	"github.com/google/uuid"
 )
 
-type Repository interface {
+type SessionRepository interface {
 	Get(ctx context.Context, sessionID uuid.UUID) (*domain.Session, error)
 	Update(ctx context.Context, session *domain.Session) error
+}
+
+type ResultRepository interface {
+	Create(ctx context.Context, sessionID uuid.UUID, data *domain.ExtractedData) error
 }
 
 type Device interface {
@@ -41,7 +45,8 @@ type waitingTask struct {
 }
 
 type Worker struct {
-	sessions Repository
+	sessions SessionRepository
+	results  ResultRepository
 	device   Device
 	parser   Parser
 	verifier Verifier
@@ -54,9 +59,10 @@ type Worker struct {
 	current *waitingTask
 }
 
-func NewWorker(sessions Repository, device Device, parser Parser, verifier Verifier, log *slog.Logger, cfg config.Worker) *Worker {
+func NewWorker(sessions SessionRepository, results ResultRepository, device Device, parser Parser, verifier Verifier, log *slog.Logger, cfg config.Worker) *Worker {
 	return &Worker{
 		sessions: sessions,
+		results:  results,
 		device:   device,
 		parser:   parser,
 		verifier: verifier,

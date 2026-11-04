@@ -10,11 +10,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type Repository interface {
+type SessionRepository interface {
 	Create(ctx context.Context, session *domain.Session) error
 	Get(ctx context.Context, sessionID uuid.UUID) (*domain.Session, error)
 	FindActiveByPhone(ctx context.Context, phone string) (*domain.Session, error)
 	Delete(ctx context.Context, sessionID uuid.UUID) error
+}
+
+type ResultRepository interface {
+	GetBySession(ctx context.Context, sessionID uuid.UUID) (*domain.ExtractedData, error)
 }
 
 type Processor interface {
@@ -24,13 +28,14 @@ type Processor interface {
 }
 
 type Service struct {
-	sessions  Repository
+	sessions  SessionRepository
+	results   ResultRepository
 	processor Processor
 	createMx  sync.Mutex
 }
 
-func NewService(sessions Repository, processor Processor) *Service {
-	return &Service{sessions: sessions, processor: processor}
+func NewService(sessions SessionRepository, results ResultRepository, processor Processor) *Service {
+	return &Service{sessions: sessions, results: results, processor: processor}
 }
 
 func (s *Service) CreateSession(ctx context.Context, phone string) (*domain.Session, bool, error) {
@@ -109,9 +114,18 @@ func (s *Service) GetSessionResult(ctx context.Context, sessionID uuid.UUID) (*d
 		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	if session.Status != domain.StatusDone || session.Result == nil {
+	if session.Status != domain.StatusDone {
 		return nil, fmt.Errorf("%s: %w", fn, domain.ErrWrongState)
 	}
 
-	return session.Result, nil
+	result, err := s.results.GetBySession(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("%s: %w", fn, domain.ErrWrongState)
+	}
+
+	return result, nil
 }

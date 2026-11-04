@@ -130,7 +130,10 @@ func (w *Worker) extract(ctx context.Context, session *domain.Session) error {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
-	session.Result = result
+	if err := w.results.Create(ctx, uuid.UUID(session.ID), result); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
 	return nil
 }
 
@@ -140,9 +143,6 @@ func (w *Worker) runCleanup(session *domain.Session) error {
 	ctx, cancel := context.WithTimeout(context.Background(), w.cfg.CleanupTimeout)
 	defer cancel()
 
-	// Persisting the cleanup status is best-effort: the device must be wiped
-	// even when the session is already gone (e.g. canceled via DELETE, which
-	// deletes it from the repository and makes Update return ErrSessionNotFound).
 	if err := w.setStatus(ctx, session, domain.StatusCleanup); err != nil {
 		w.log.Warn("failed to set cleanup status",
 			slog.String("session_id", uuid.UUID(session.ID).String()), sloglib.Error(err))

@@ -12,9 +12,9 @@ import (
 
 func idOf(s *domain.Session) uuid.UUID { return uuid.UUID(s.ID) }
 
-func TestMemoryRepository_CreateAndGet(t *testing.T) {
+func TestMemorySessionRepository_CreateAndGet(t *testing.T) {
 	ctx := context.Background()
-	repo := NewMemoryRepository()
+	repo := NewMemorySessionRepository()
 
 	s := domain.NewSession("+79991234567")
 	require.NoError(t, repo.Create(ctx, s))
@@ -25,17 +25,17 @@ func TestMemoryRepository_CreateAndGet(t *testing.T) {
 	require.Equal(t, s.Status, got.Status)
 }
 
-func TestMemoryRepository_Get_NotFound(t *testing.T) {
+func TestMemorySessionRepository_Get_NotFound(t *testing.T) {
 	ctx := context.Background()
-	repo := NewMemoryRepository()
+	repo := NewMemorySessionRepository()
 
 	_, err := repo.Get(ctx, uuid.New())
 	require.ErrorIs(t, err, domain.ErrSessionNotFound)
 }
 
-func TestMemoryRepository_Delete(t *testing.T) {
+func TestMemorySessionRepository_Delete(t *testing.T) {
 	ctx := context.Background()
-	repo := NewMemoryRepository()
+	repo := NewMemorySessionRepository()
 
 	s := domain.NewSession("+79991234567")
 	require.NoError(t, repo.Create(ctx, s))
@@ -45,9 +45,9 @@ func TestMemoryRepository_Delete(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrSessionNotFound)
 }
 
-func TestMemoryRepository_Update(t *testing.T) {
+func TestMemorySessionRepository_Update(t *testing.T) {
 	ctx := context.Background()
-	repo := NewMemoryRepository()
+	repo := NewMemorySessionRepository()
 
 	s := domain.NewSession("+79991234567")
 	require.NoError(t, repo.Create(ctx, s))
@@ -60,28 +60,28 @@ func TestMemoryRepository_Update(t *testing.T) {
 	require.Equal(t, domain.StatusExtracting, got.Status)
 }
 
-func TestMemoryRepository_Update_NotFound(t *testing.T) {
+func TestMemorySessionRepository_Update_NotFound(t *testing.T) {
 	ctx := context.Background()
-	repo := NewMemoryRepository()
+	repo := NewMemorySessionRepository()
 
 	s := domain.NewSession("+79991234567") // не сохранён
 	err := repo.Update(ctx, s)
 	require.ErrorIs(t, err, domain.ErrSessionNotFound)
 }
 
-func TestMemoryRepository_FindActiveByPhone(t *testing.T) {
+func TestMemorySessionRepository_FindActiveByPhone(t *testing.T) {
 	ctx := context.Background()
 	const phone = "+79991234567"
 
 	t.Run("none returns nil,nil", func(t *testing.T) {
-		repo := NewMemoryRepository()
+		repo := NewMemorySessionRepository()
 		got, err := repo.FindActiveByPhone(ctx, phone)
 		require.NoError(t, err)
 		require.Nil(t, got)
 	})
 
 	t.Run("active session is found", func(t *testing.T) {
-		repo := NewMemoryRepository()
+		repo := NewMemorySessionRepository()
 		s := domain.NewSession(phone)
 		require.NoError(t, repo.Create(ctx, s))
 
@@ -92,7 +92,7 @@ func TestMemoryRepository_FindActiveByPhone(t *testing.T) {
 	})
 
 	t.Run("terminal session is ignored", func(t *testing.T) {
-		repo := NewMemoryRepository()
+		repo := NewMemorySessionRepository()
 		s := domain.NewSession(phone)
 		s.Status = domain.StatusDone
 		require.NoError(t, repo.Create(ctx, s))
@@ -103,7 +103,7 @@ func TestMemoryRepository_FindActiveByPhone(t *testing.T) {
 	})
 
 	t.Run("matches by exact phone", func(t *testing.T) {
-		repo := NewMemoryRepository()
+		repo := NewMemorySessionRepository()
 		a := domain.NewSession("+70000000001")
 		b := domain.NewSession("+70000000002")
 		require.NoError(t, repo.Create(ctx, a))
@@ -116,9 +116,9 @@ func TestMemoryRepository_FindActiveByPhone(t *testing.T) {
 	})
 }
 
-func TestMemoryRepository_Get_ReturnsCopy(t *testing.T) {
+func TestMemorySessionRepository_Get_ReturnsCopy(t *testing.T) {
 	ctx := context.Background()
-	repo := NewMemoryRepository()
+	repo := NewMemorySessionRepository()
 
 	s := domain.NewSession("+79991234567")
 	require.NoError(t, repo.Create(ctx, s))
@@ -133,9 +133,9 @@ func TestMemoryRepository_Get_ReturnsCopy(t *testing.T) {
 		"мутация результата Get не должна менять хранимую сессию")
 }
 
-func TestMemoryRepository_Create_StoresCopy(t *testing.T) {
+func TestMemorySessionRepository_Create_StoresCopy(t *testing.T) {
 	ctx := context.Background()
-	repo := NewMemoryRepository()
+	repo := NewMemorySessionRepository()
 
 	s := domain.NewSession("+79991234567")
 	require.NoError(t, repo.Create(ctx, s))
@@ -148,9 +148,9 @@ func TestMemoryRepository_Create_StoresCopy(t *testing.T) {
 		"мутация объекта после Create не должна менять хранимую сессию")
 }
 
-func TestMemoryRepository_ConcurrentAccess(t *testing.T) {
+func TestMemorySessionRepository_ConcurrentAccess(t *testing.T) {
 	ctx := context.Background()
-	repo := NewMemoryRepository()
+	repo := NewMemorySessionRepository()
 
 	s := domain.NewSession("+79991234567")
 	require.NoError(t, repo.Create(ctx, s))

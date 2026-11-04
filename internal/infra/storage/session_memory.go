@@ -4,23 +4,22 @@ import (
 	"context"
 	"sync"
 	"telegram-auth-extractor/internal/domain"
-	"time"
 
 	"github.com/google/uuid"
 )
 
-type MemoryRepository struct {
+type MemorySessionRepository struct {
 	rwMx     sync.RWMutex
 	sessions map[uuid.UUID]*domain.Session
 }
 
-func NewMemoryRepository() *MemoryRepository {
-	return &MemoryRepository{
+func NewMemorySessionRepository() *MemorySessionRepository {
+	return &MemorySessionRepository{
 		sessions: make(map[uuid.UUID]*domain.Session),
 	}
 }
 
-func (mr *MemoryRepository) Create(_ context.Context, session *domain.Session) error {
+func (mr *MemorySessionRepository) Create(_ context.Context, session *domain.Session) error {
 	mr.rwMx.Lock()
 	defer mr.rwMx.Unlock()
 
@@ -29,7 +28,7 @@ func (mr *MemoryRepository) Create(_ context.Context, session *domain.Session) e
 	return nil
 }
 
-func (mr *MemoryRepository) Get(_ context.Context, sessionID uuid.UUID) (*domain.Session, error) {
+func (mr *MemorySessionRepository) Get(_ context.Context, sessionID uuid.UUID) (*domain.Session, error) {
 	mr.rwMx.RLock()
 	defer mr.rwMx.RUnlock()
 
@@ -42,7 +41,7 @@ func (mr *MemoryRepository) Get(_ context.Context, sessionID uuid.UUID) (*domain
 	return &cp, nil
 }
 
-func (mr *MemoryRepository) Delete(_ context.Context, sessionID uuid.UUID) error {
+func (mr *MemorySessionRepository) Delete(_ context.Context, sessionID uuid.UUID) error {
 	mr.rwMx.Lock()
 	defer mr.rwMx.Unlock()
 
@@ -50,7 +49,7 @@ func (mr *MemoryRepository) Delete(_ context.Context, sessionID uuid.UUID) error
 	return nil
 }
 
-func (mr *MemoryRepository) FindActiveByPhone(_ context.Context, phone string) (*domain.Session, error) {
+func (mr *MemorySessionRepository) FindActiveByPhone(_ context.Context, phone string) (*domain.Session, error) {
 	mr.rwMx.RLock()
 	defer mr.rwMx.RUnlock()
 
@@ -64,7 +63,7 @@ func (mr *MemoryRepository) FindActiveByPhone(_ context.Context, phone string) (
 	return nil, nil
 }
 
-func (mr *MemoryRepository) Update(_ context.Context, session *domain.Session) error {
+func (mr *MemorySessionRepository) Update(_ context.Context, session *domain.Session) error {
 	mr.rwMx.Lock()
 	defer mr.rwMx.Unlock()
 
@@ -74,7 +73,6 @@ func (mr *MemoryRepository) Update(_ context.Context, session *domain.Session) e
 	}
 
 	cp := *session
-	cp.UpdatedAt = time.Now()
 	mr.sessions[id] = &cp
 	return nil
 }

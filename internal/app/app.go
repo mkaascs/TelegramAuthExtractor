@@ -32,19 +32,21 @@ type App struct {
 }
 
 func NewApp(cfg config.Config, log *slog.Logger) *App {
-	repo := storage.NewMemoryRepository()
+	repo := storage.NewMemorySessionRepository()
+	resultRepo := storage.NewMemoryResultRepository()
 	pg, _ := postgres.NewDB(cfg.Postgres, log)
 
 	pg.MustConnect()
 
 	dev := device.NewDevice(cfg.ADB, log)
 	worker := workers.NewWorker(repo,
+		resultRepo,
 		dev,
 		tgnet.NewParser(),
 		telegram.NewVerifier(cfg.Telegram, log),
 		log, cfg.Worker)
 
-	svc := sessions.NewService(repo, worker)
+	svc := sessions.NewService(repo, resultRepo, worker)
 	srv := server.NewServer(rest.NewHandler(svc), cfg, log)
 
 	log.Info("application has been initialized")

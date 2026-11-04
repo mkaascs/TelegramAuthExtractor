@@ -43,6 +43,17 @@ func (m mockRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return m.deleteFn(ctx, id)
 }
 
+type mockResultRepo struct {
+	getFn func(ctx context.Context, id uuid.UUID) (*domain.ExtractedData, error)
+}
+
+func (m mockResultRepo) GetBySession(ctx context.Context, id uuid.UUID) (*domain.ExtractedData, error) {
+	if m.getFn == nil {
+		return nil, nil
+	}
+	return m.getFn(ctx, id)
+}
+
 type mockProcessor struct {
 	enqueueFn    func(s *domain.Session)
 	submitCodeFn func(id uuid.UUID, code string) error
@@ -72,6 +83,7 @@ func TestService_CreateSession(t *testing.T) {
 				findFn:   func(_ context.Context, _ string) (*domain.Session, error) { return nil, nil },
 				createFn: func(_ context.Context, _ *domain.Session) error { return nil },
 			},
+			mockResultRepo{},
 			mockProcessor{
 				enqueueFn: func(_ *domain.Session) { enqueued = true },
 			},
@@ -90,6 +102,7 @@ func TestService_CreateSession(t *testing.T) {
 			mockRepo{
 				findFn: func(_ context.Context, _ string) (*domain.Session, error) { return existing, nil },
 			},
+			mockResultRepo{},
 			mockProcessor{},
 		)
 
@@ -103,6 +116,7 @@ func TestService_CreateSession(t *testing.T) {
 		wantErr := errors.New("db down")
 		svc := NewService(
 			mockRepo{findFn: func(_ context.Context, _ string) (*domain.Session, error) { return nil, wantErr }},
+			mockResultRepo{},
 			mockProcessor{},
 		)
 
@@ -117,6 +131,7 @@ func TestService_CreateSession(t *testing.T) {
 				findFn:   func(_ context.Context, _ string) (*domain.Session, error) { return nil, nil },
 				createFn: func(_ context.Context, _ *domain.Session) error { return wantErr },
 			},
+			mockResultRepo{},
 			mockProcessor{},
 		)
 
@@ -132,6 +147,7 @@ func TestService_GetSession(t *testing.T) {
 		s := domain.NewSession("+79991234567")
 		svc := NewService(
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil }},
+			mockResultRepo{},
 			mockProcessor{},
 		)
 
@@ -145,6 +161,7 @@ func TestService_GetSession(t *testing.T) {
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) {
 				return nil, domain.ErrSessionNotFound
 			}},
+			mockResultRepo{},
 			mockProcessor{},
 		)
 
@@ -159,10 +176,13 @@ func TestService_GetSessionResult(t *testing.T) {
 	t.Run("done -> returns result", func(t *testing.T) {
 		s := domain.NewSession("+79991234567")
 		s.Status = domain.StatusDone
-		s.Result = &domain.ExtractedData{DCID: 2, AuthKey: []byte("key"), UserID: 1153367122}
+		result := &domain.ExtractedData{DCID: 2, AuthKey: []byte("key"), UserID: 1153367122}
 
 		svc := NewService(
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil }},
+			mockResultRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.ExtractedData, error) {
+				return result, nil
+			}},
 			mockProcessor{},
 		)
 
@@ -178,6 +198,7 @@ func TestService_GetSessionResult(t *testing.T) {
 
 		svc := NewService(
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil }},
+			mockResultRepo{},
 			mockProcessor{},
 		)
 
@@ -185,13 +206,15 @@ func TestService_GetSessionResult(t *testing.T) {
 		require.ErrorIs(t, err, domain.ErrWrongState)
 	})
 
-	t.Run("done but result nil -> ErrWrongState", func(t *testing.T) {
+	t.Run("done but result missing -> ErrWrongState", func(t *testing.T) {
 		s := domain.NewSession("+79991234567")
 		s.Status = domain.StatusDone
-		s.Result = nil
 
 		svc := NewService(
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil }},
+			mockResultRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.ExtractedData, error) {
+				return nil, nil
+			}},
 			mockProcessor{},
 		)
 
@@ -204,6 +227,7 @@ func TestService_GetSessionResult(t *testing.T) {
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) {
 				return nil, domain.ErrSessionNotFound
 			}},
+			mockResultRepo{},
 			mockProcessor{},
 		)
 
@@ -220,6 +244,7 @@ func TestService_SubmitCode(t *testing.T) {
 		var called bool
 		svc := NewService(
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil }},
+			mockResultRepo{},
 			mockProcessor{submitCodeFn: func(_ uuid.UUID, _ string) error { called = true; return nil }},
 		)
 
@@ -234,6 +259,7 @@ func TestService_SubmitCode(t *testing.T) {
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) {
 				return nil, domain.ErrSessionNotFound
 			}},
+			mockResultRepo{},
 			mockProcessor{},
 		)
 
@@ -245,6 +271,7 @@ func TestService_SubmitCode(t *testing.T) {
 		s := domain.NewSession("+79991234567")
 		svc := NewService(
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil }},
+			mockResultRepo{},
 			mockProcessor{submitCodeFn: func(_ uuid.UUID, _ string) error { return domain.ErrWrongState }},
 		)
 
@@ -264,6 +291,7 @@ func TestService_DeleteSession(t *testing.T) {
 				getFn:    func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil },
 				deleteFn: func(_ context.Context, _ uuid.UUID) error { deleted = true; return nil },
 			},
+			mockResultRepo{},
 			mockProcessor{cancelFn: func(_ uuid.UUID) error { cancelled = true; return nil }},
 		)
 
@@ -277,6 +305,7 @@ func TestService_DeleteSession(t *testing.T) {
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) {
 				return nil, domain.ErrSessionNotFound
 			}},
+			mockResultRepo{},
 			mockProcessor{},
 		)
 
@@ -292,6 +321,7 @@ func TestService_DeleteSession(t *testing.T) {
 				getFn:    func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil },
 				deleteFn: func(_ context.Context, _ uuid.UUID) error { deleted = true; return nil },
 			},
+			mockResultRepo{},
 			mockProcessor{cancelFn: func(_ uuid.UUID) error { return domain.ErrSessionNotFound }},
 		)
 
@@ -310,6 +340,7 @@ func TestService_DeleteSession(t *testing.T) {
 					return nil
 				},
 			},
+			mockResultRepo{},
 			mockProcessor{cancelFn: func(_ uuid.UUID) error { return wantErr }},
 		)
 
@@ -374,7 +405,7 @@ func TestService_CreateSession_ConcurrentDedup(t *testing.T) {
 	ctx := context.Background()
 
 	var enqueued atomic.Int64
-	svc := NewService(newStubRepo(), mockProcessor{
+	svc := NewService(newStubRepo(), mockResultRepo{}, mockProcessor{
 		enqueueFn: func(_ *domain.Session) { enqueued.Add(1) },
 	})
 
