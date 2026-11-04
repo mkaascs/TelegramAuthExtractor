@@ -23,7 +23,7 @@ type Config struct {
 	Env      EnvType  `yaml:"env"`
 	Http     Http     `yaml:"http_server"`
 	ADB      ADB      `yaml:"adb"`
-	Worker   Worker   `yaml:"worker"`
+	Service  Service  `yaml:"service"`
 	Postgres Postgres `yaml:"postgres"`
 	Telegram Telegram `yaml:"-"`
 }
@@ -32,6 +32,11 @@ type Http struct {
 	Port         uint16        `yaml:"port" env:"HTTP_PORT" env-default:"8080"`
 	WriteTimeout time.Duration `yaml:"write_timeout" env-default:"5s"`
 	ReadTimeout  time.Duration `yaml:"read_timeout" env-default:"10s"`
+}
+
+type Service struct {
+	SessionTTL time.Duration `yaml:"session_ttl" env-default:"168h"`
+	Worker     Worker        `yaml:"worker"`
 }
 
 type Worker struct {

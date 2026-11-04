@@ -27,26 +27,30 @@ type App struct {
 	server *server.Server
 	worker *workers.Worker
 	device *device.Device
+	db     *postgres.DB
 
 	cancelWorker context.CancelFunc
 }
 
 func NewApp(cfg config.Config, log *slog.Logger) *App {
-	repo := storage.NewMemorySessionRepository()
-	resultRepo := storage.NewMemoryResultRepository()
-	pg, _ := postgres.NewDB(cfg.Postgres, log)
+	pg, err := postgres.NewDB(cfg.Postgres, log)
+	if err != nil {
+		os.Exit(1)
+	}
 
 	pg.MustConnect()
 
+	sessionRepo := storage.NewSession(pg.Pool, log)
+	resultRepo := storage.NewResult(pg.Pool, log)
+
 	dev := device.NewDevice(cfg.ADB, log)
-	worker := workers.NewWorker(repo,
-		resultRepo,
+	worker := workers.NewWorker(sessionRepo,
 		dev,
 		tgnet.NewParser(),
 		telegram.NewVerifier(cfg.Telegram, log),
-		log, cfg.Worker)
+		log, cfg.Service.Worker)
 
-	svc := sessions.NewService(repo, resultRepo, worker)
+	svc := sessions.NewService(sessionRepo, resultRepo, worker, cfg.Service)
 	srv := server.NewServer(rest.NewHandler(svc), cfg, log)
 
 	log.Info("application has been initialized")
@@ -57,6 +61,7 @@ func NewApp(cfg config.Config, log *slog.Logger) *App {
 		server: srv,
 		worker: worker,
 		device: dev,
+		db:     pg,
 	}
 }
 
@@ -69,7 +74,7 @@ func (a *App) Run(ctx context.Context) error {
 	a.cancelWorker = cancel
 
 	go a.worker.Run(workerCtx)
-	a.log.Info("worker is running", slog.Int("queue_size", a.cfg.Worker.QueueSize))
+	a.log.Info("worker is running", slog.Int("queue_size", a.cfg.Service.Worker.QueueSize))
 
 	a.log.Info("http server is running", slog.Int("port", int(a.cfg.Http.Port)))
 	return a.server.Run()
@@ -89,5 +94,14 @@ func (a *App) Shutdown(ctx context.Context) error {
 	}
 
 	a.log.Info("http server is stopping")
-	return a.server.Shutdown(ctx)
+	if err := a.server.Shutdown(ctx); err != nil {
+		return err
+	}
+
+	if a.db != nil {
+		a.log.Info("database pool is closing")
+		a.db.Close()
+	}
+
+	return nil
 }

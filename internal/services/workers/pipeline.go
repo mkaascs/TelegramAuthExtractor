@@ -15,17 +15,17 @@ import (
 
 const maxCodeAttempts = 3
 
-func (w *Worker) runPipeline(ctx context.Context, session *domain.Session) error {
+func (w *Worker) runPipeline(ctx context.Context, session *domain.Session) (*domain.ExtractedData, error) {
 	const fn = "services.workers.Worker.runPipeline"
 
 	if err := w.login(ctx, session); err != nil {
-		return fmt.Errorf("%s: %w", fn, err)
+		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
 	for {
 		code, err := w.waitForCode(ctx, session)
 		if err != nil {
-			return fmt.Errorf("%s: %w", fn, err)
+			return nil, fmt.Errorf("%s: %w", fn, err)
 		}
 
 		err = w.enterCode(ctx, session, code)
@@ -36,7 +36,7 @@ func (w *Worker) runPipeline(ctx context.Context, session *domain.Session) error
 		if errors.Is(err, domain.ErrCodeInvalid) {
 			session.CodeAttempts++
 			if session.CodeAttempts >= maxCodeAttempts {
-				return fmt.Errorf("%s: %w", fn, domain.ErrTooManyCodeAttempts)
+				return nil, fmt.Errorf("%s: %w", fn, domain.ErrTooManyCodeAttempts)
 			}
 
 			w.log.Info("wrong code, awaiting retry",
@@ -45,14 +45,15 @@ func (w *Worker) runPipeline(ctx context.Context, session *domain.Session) error
 			continue
 		}
 
-		return fmt.Errorf("%s: %w", fn, err)
+		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	if err := w.extract(ctx, session); err != nil {
-		return fmt.Errorf("%s: %w", fn, err)
+	result, err := w.extract(ctx, session)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	return nil
+	return result, nil
 }
 
 func (w *Worker) login(ctx context.Context, session *domain.Session) error {
@@ -108,33 +109,29 @@ func (w *Worker) enterCode(ctx context.Context, session *domain.Session, code st
 	return nil
 }
 
-func (w *Worker) extract(ctx context.Context, session *domain.Session) error {
+func (w *Worker) extract(ctx context.Context, session *domain.Session) (*domain.ExtractedData, error) {
 	const fn = "services.workers.Worker.extract"
 
 	if err := w.setStatus(ctx, session, domain.StatusExtracting); err != nil {
-		return fmt.Errorf("%s: %w", fn, err)
+		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
 	data, err := w.device.SessionFile(ctx)
 	if err != nil {
-		return fmt.Errorf("%s: %w", fn, err)
+		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
 	keys, err := w.parser.Parse(ctx, data)
 	if err != nil {
-		return fmt.Errorf("%s: %w", fn, err)
+		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
 	result, err := w.verifier.Verify(ctx, keys)
 	if err != nil {
-		return fmt.Errorf("%s: %w", fn, err)
+		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	if err := w.results.Create(ctx, uuid.UUID(session.ID), result); err != nil {
-		return fmt.Errorf("%s: %w", fn, err)
-	}
-
-	return nil
+	return result, nil
 }
 
 func (w *Worker) runCleanup(session *domain.Session) error {

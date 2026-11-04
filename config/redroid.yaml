@@ -3,10 +3,12 @@ http_server:
   port: 8080
   write_timeout: 5s
   read_timeout: 10s
-worker:
-  code_wait: 3m
-  cleanup_timeout: 30s
-  queue_size: 50
+service:
+  session_ttl: 720h
+  worker:
+    code_wait: 2m
+    cleanup_timeout: 30s
+    queue_size: 50
 adb:
   wait_timeout: 30s
   phone_check_timeout: 1m

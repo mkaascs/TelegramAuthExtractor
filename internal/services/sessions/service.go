@@ -4,16 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
+	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/domain"
 
 	"github.com/google/uuid"
 )
 
 type SessionRepository interface {
-	Create(ctx context.Context, session *domain.Session) error
+	CreateOrGetActive(ctx context.Context, session *domain.Session) (*domain.Session, bool, error)
 	Get(ctx context.Context, sessionID uuid.UUID) (*domain.Session, error)
-	FindActiveByPhone(ctx context.Context, phone string) (*domain.Session, error)
 	Delete(ctx context.Context, sessionID uuid.UUID) error
 }
 
@@ -31,35 +30,28 @@ type Service struct {
 	sessions  SessionRepository
 	results   ResultRepository
 	processor Processor
-	createMx  sync.Mutex
+	cfg       config.Service
 }
 
-func NewService(sessions SessionRepository, results ResultRepository, processor Processor) *Service {
-	return &Service{sessions: sessions, results: results, processor: processor}
+func NewService(sessions SessionRepository, results ResultRepository, processor Processor, cfg config.Service) *Service {
+	return &Service{sessions: sessions, results: results, processor: processor, cfg: cfg}
 }
 
 func (s *Service) CreateSession(ctx context.Context, phone string) (*domain.Session, bool, error) {
 	const fn = "services.sessions.Service.CreateSession"
 
-	s.createMx.Lock()
-	defer s.createMx.Unlock()
+	session := domain.NewSession(phone, s.cfg.SessionTTL)
 
-	existing, err := s.sessions.FindActiveByPhone(ctx, phone)
+	stored, created, err := s.sessions.CreateOrGetActive(ctx, session)
 	if err != nil {
 		return nil, false, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	if existing != nil {
-		return existing, false, nil
+	if created {
+		s.processor.Enqueue(stored)
 	}
 
-	session := domain.NewSession(phone)
-	if err := s.sessions.Create(ctx, session); err != nil {
-		return nil, false, fmt.Errorf("%s: %w", fn, err)
-	}
-
-	s.processor.Enqueue(session)
-	return session, true, nil
+	return stored, created, nil
 }
 
 func (s *Service) DeleteSession(ctx context.Context, sessionID uuid.UUID) error {

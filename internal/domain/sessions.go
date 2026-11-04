@@ -18,13 +18,15 @@ type Session struct {
 	ExpiresAt    time.Time
 }
 
-func NewSession(phone string) *Session {
+func NewSession(phone string, ttl time.Duration) *Session {
 	id, _ := uuid.NewV7()
+	now := time.Now()
 
 	return &Session{
 		ID:        SessionID(id),
 		Phone:     phone,
 		Status:    StatusPending,
-		CreatedAt: time.Now(),
+		CreatedAt: now,
+		ExpiresAt: now.Add(ttl),
 	}
 }
