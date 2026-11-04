@@ -23,7 +23,8 @@ type Config struct {
 	Env      EnvType  `yaml:"env"`
 	Http     Http     `yaml:"http_server"`
 	ADB      ADB      `yaml:"adb"`
-	Worker   Worker   `yaml:"worker"`
+	Service  Service  `yaml:"service"`
+	Postgres Postgres `yaml:"postgres"`
 	Telegram Telegram `yaml:"-"`
 }
 
@@ -33,10 +34,21 @@ type Http struct {
 	ReadTimeout  time.Duration `yaml:"read_timeout" env-default:"10s"`
 }
 
+type Service struct {
+	SessionTTL time.Duration `yaml:"session_ttl" env-default:"168h"`
+	Worker     Worker        `yaml:"worker"`
+	Dispatcher Dispatcher    `yaml:"dispatcher"`
+}
+
 type Worker struct {
 	CodeWait       time.Duration `yaml:"code_wait" env-default:"1m"`
 	CleanupTimeout time.Duration `yaml:"cleanup_timeout" env-default:"1m"`
 	QueueSize      int           `yaml:"queue_size" env-default:"20"`
+}
+
+type Dispatcher struct {
+	PollInterval time.Duration `yaml:"poll_interval" env-default:"2s"`
+	BatchSize    int           `yaml:"batch_size" env-default:"10"`
 }
 
 type ADB struct {
@@ -48,6 +60,14 @@ type ADB struct {
 	Binary            string        `yaml:"binary" env-default:"adb"`
 	Serial            string        `yaml:"serial" env-required:"true"`
 	NeedsConnect      bool          `yaml:"needs_connect"`
+}
+
+type Postgres struct {
+	Addr              string        `yaml:"addr" env-required:"true"`
+	DB                string        `yaml:"-" env:"POSTGRES_DBNAME" env-required:"true"`
+	Username          string        `yaml:"-" env:"POSTGRES_USERNAME" env-required:"true"`
+	Password          string        `yaml:"-" env:"POSTGRES_PASSWORD" env-required:"true"`
+	ConnectionTimeout time.Duration `yaml:"connection_timeout" env-default:"5s"`
 }
 
 type Telegram struct {

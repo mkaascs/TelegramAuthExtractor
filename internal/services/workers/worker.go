@@ -13,9 +13,10 @@ import (
 	"github.com/google/uuid"
 )
 
-type Repository interface {
+type SessionRepository interface {
 	Get(ctx context.Context, sessionID uuid.UUID) (*domain.Session, error)
 	Update(ctx context.Context, session *domain.Session) error
+	Complete(ctx context.Context, session *domain.Session, result *domain.ExtractedData) error
 }
 
 type Device interface {
@@ -41,7 +42,7 @@ type waitingTask struct {
 }
 
 type Worker struct {
-	sessions Repository
+	sessions SessionRepository
 	device   Device
 	parser   Parser
 	verifier Verifier
@@ -54,7 +55,7 @@ type Worker struct {
 	current *waitingTask
 }
 
-func NewWorker(sessions Repository, device Device, parser Parser, verifier Verifier, log *slog.Logger, cfg config.Worker) *Worker {
+func NewWorker(sessions SessionRepository, device Device, parser Parser, verifier Verifier, log *slog.Logger, cfg config.Worker) *Worker {
 	return &Worker{
 		sessions: sessions,
 		device:   device,
@@ -68,6 +69,10 @@ func NewWorker(sessions Repository, device Device, parser Parser, verifier Verif
 
 func (w *Worker) Enqueue(session *domain.Session) {
 	w.queue <- session
+}
+
+func (w *Worker) FreeSlots() int {
+	return cap(w.queue) - len(w.queue)
 }
 
 func (w *Worker) SubmitCode(sessionID uuid.UUID, code string) error {
@@ -131,7 +136,7 @@ func (w *Worker) process(ctx context.Context, session *domain.Session) {
 	w.setCurrent(task)
 	defer w.setCurrent(nil)
 
-	err := w.runPipeline(ctx, session)
+	result, err := w.runPipeline(ctx, session)
 
 	if err := w.runCleanup(session); err != nil {
 		log.Error("failed to cleanup device", slog.String("session_id", sessionID.String()), sloglib.Error(err))
@@ -151,11 +156,27 @@ func (w *Worker) process(ctx context.Context, session *domain.Session) {
 		return
 	}
 
-	if err := w.setStatus(ctx, session, domain.StatusDone); err != nil {
-		log.Error("failed to update status", slog.String("session_id", sessionID.String()), sloglib.Error(err))
+	if err := w.complete(ctx, session, result); err != nil {
+		log.Error("failed to persist result", slog.String("session_id", sessionID.String()), sloglib.Error(err))
+
+		if err := w.setFailedStatus(ctx, session, err); err != nil {
+			log.Error("failed to persist failed status", slog.String("session_id", sessionID.String()), sloglib.Error(err))
+		}
+
+		return
 	}
 
 	log.Info("session extracted", slog.String("session_id", sessionID.String()))
+}
+
+func (w *Worker) complete(ctx context.Context, session *domain.Session, result *domain.ExtractedData) error {
+	const fn = "services.workers.Worker.complete"
+
+	if err := w.sessions.Complete(ctx, session, result); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	return nil
 }
 
 func (w *Worker) setCurrent(task *waitingTask) {

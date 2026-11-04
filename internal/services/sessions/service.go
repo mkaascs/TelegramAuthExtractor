@@ -4,57 +4,49 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
+	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/domain"
 
 	"github.com/google/uuid"
 )
 
-type Repository interface {
-	Create(ctx context.Context, session *domain.Session) error
+type SessionRepository interface {
+	CreateOrGetActive(ctx context.Context, session *domain.Session) (*domain.Session, bool, error)
 	Get(ctx context.Context, sessionID uuid.UUID) (*domain.Session, error)
-	FindActiveByPhone(ctx context.Context, phone string) (*domain.Session, error)
 	Delete(ctx context.Context, sessionID uuid.UUID) error
 }
 
+type ResultRepository interface {
+	GetBySession(ctx context.Context, sessionID uuid.UUID) (*domain.ExtractedData, error)
+}
+
 type Processor interface {
-	Enqueue(session *domain.Session)
 	SubmitCode(sessionID uuid.UUID, code string) error
 	Cancel(sessionID uuid.UUID) error
 }
 
 type Service struct {
-	sessions  Repository
+	sessions  SessionRepository
+	results   ResultRepository
 	processor Processor
-	createMx  sync.Mutex
+	cfg       config.Service
 }
 
-func NewService(sessions Repository, processor Processor) *Service {
-	return &Service{sessions: sessions, processor: processor}
+func NewService(sessions SessionRepository, results ResultRepository, processor Processor, cfg config.Service) *Service {
+	return &Service{sessions: sessions, results: results, processor: processor, cfg: cfg}
 }
 
 func (s *Service) CreateSession(ctx context.Context, phone string) (*domain.Session, bool, error) {
 	const fn = "services.sessions.Service.CreateSession"
 
-	s.createMx.Lock()
-	defer s.createMx.Unlock()
+	session := domain.NewSession(phone, s.cfg.SessionTTL)
 
-	existing, err := s.sessions.FindActiveByPhone(ctx, phone)
+	stored, created, err := s.sessions.CreateOrGetActive(ctx, session)
 	if err != nil {
 		return nil, false, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	if existing != nil {
-		return existing, false, nil
-	}
-
-	session := domain.NewSession(phone)
-	if err := s.sessions.Create(ctx, session); err != nil {
-		return nil, false, fmt.Errorf("%s: %w", fn, err)
-	}
-
-	s.processor.Enqueue(session)
-	return session, true, nil
+	return stored, created, nil
 }
 
 func (s *Service) DeleteSession(ctx context.Context, sessionID uuid.UUID) error {
@@ -109,9 +101,18 @@ func (s *Service) GetSessionResult(ctx context.Context, sessionID uuid.UUID) (*d
 		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	if session.Status != domain.StatusDone || session.Result == nil {
+	if session.Status != domain.StatusDone {
 		return nil, fmt.Errorf("%s: %w", fn, domain.ErrWrongState)
 	}
 
-	return session.Result, nil
+	result, err := s.results.GetBySession(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("%s: %w", fn, domain.ErrWrongState)
+	}
+
+	return result, nil
 }

@@ -17,10 +17,12 @@ import (
 )
 
 type mockRepo struct {
-	mu       sync.Mutex
-	session  *domain.Session
-	getErr   error
-	statuses []domain.Status
+	mu          sync.Mutex
+	session     *domain.Session
+	getErr      error
+	statuses    []domain.Status
+	completed   *domain.ExtractedData
+	completeErr error
 }
 
 func (m *mockRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Session, error) {
@@ -35,6 +37,24 @@ func (m *mockRepo) Update(_ context.Context, s *domain.Session) error {
 	defer m.mu.Unlock()
 	m.statuses = append(m.statuses, s.Status)
 	return nil
+}
+
+func (m *mockRepo) Complete(_ context.Context, s *domain.Session, result *domain.ExtractedData) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.completeErr != nil {
+		return m.completeErr
+	}
+	m.completed = result
+	s.Status = domain.StatusDone
+	m.statuses = append(m.statuses, domain.StatusDone)
+	return nil
+}
+
+func (m *mockRepo) completedResult() *domain.ExtractedData {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.completed
 }
 
 func (m *mockRepo) snapshot() []domain.Status {
@@ -161,7 +181,7 @@ func cancelWhenReady(t *testing.T, w *Worker, id uuid.UUID) {
 }
 
 func TestWorker_Process_HappyPath(t *testing.T) {
-	session := domain.NewSession("+79991234567")
+	session := domain.NewSession("+79991234567", 0)
 	id := uuid.UUID(session.ID)
 	result := &domain.ExtractedData{DCID: 2, AuthKey: []byte("key"), UserID: 1153367122}
 
@@ -189,12 +209,12 @@ func TestWorker_Process_HappyPath(t *testing.T) {
 
 	require.Equal(t, []string{"prepare", "phone", "code", "file", "clear"}, device.snapshot())
 	require.Equal(t, domain.StatusDone, session.Status)
-	require.Equal(t, result, session.Result)
+	require.Equal(t, result, repo.completedResult())
 	require.Nil(t, session.Error)
 }
 
 func TestWorker_Process_CodeTimeout(t *testing.T) {
-	session := domain.NewSession("+79991234567")
+	session := domain.NewSession("+79991234567", 0)
 
 	cfg := testCfg()
 	cfg.CodeWait = 50 * time.Millisecond
@@ -218,7 +238,7 @@ func TestWorker_Process_CodeTimeout(t *testing.T) {
 }
 
 func TestWorker_Process_Cancelled(t *testing.T) {
-	session := domain.NewSession("+79991234567")
+	session := domain.NewSession("+79991234567", 0)
 	id := uuid.UUID(session.ID)
 
 	repo := &mockRepo{session: session}
@@ -238,7 +258,7 @@ func TestWorker_Process_Cancelled(t *testing.T) {
 }
 
 func TestWorker_Process_DeviceError(t *testing.T) {
-	session := domain.NewSession("+79991234567")
+	session := domain.NewSession("+79991234567", 0)
 
 	repo := &mockRepo{session: session}
 	device := &mockDevice{phoneErr: errors.New("adb: no device")}
@@ -252,7 +272,7 @@ func TestWorker_Process_DeviceError(t *testing.T) {
 }
 
 func TestWorker_Process_ParserError(t *testing.T) {
-	session := domain.NewSession("+79991234567")
+	session := domain.NewSession("+79991234567", 0)
 	id := uuid.UUID(session.ID)
 
 	repo := &mockRepo{session: session}
@@ -270,12 +290,12 @@ func TestWorker_Process_ParserError(t *testing.T) {
 
 	require.Equal(t, domain.StatusFailed, session.Status)
 	require.NotNil(t, session.Error)
-	require.Nil(t, session.Result)
+	require.Nil(t, repo.completedResult())
 	require.Contains(t, device.snapshot(), "clear") // cleanup всё равно
 }
 
 func TestWorker_Process_DeletedWhileQueued(t *testing.T) {
-	session := domain.NewSession("+79991234567")
+	session := domain.NewSession("+79991234567", 0)
 
 	repo := &mockRepo{getErr: domain.ErrSessionNotFound}
 	device := &mockDevice{}
