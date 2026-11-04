@@ -13,6 +13,7 @@ import (
 	"telegram-auth-extractor/internal/delivery/rest/middlewares"
 	"telegram-auth-extractor/internal/lib/logging/sloglib"
 
+	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	nethttpmiddleware "github.com/oapi-codegen/nethttp-middleware"
@@ -43,10 +44,14 @@ func NewServer(handlers apiv1.ServerInterface, cfg config.Config, lg *slog.Logge
 	}
 
 	router.Route("/api/v1", func(r chi.Router) {
+		r.Use(middlewares.NewAPIKeyAuth(cfg.Auth.APIKey, lg))
 		r.Use(nethttpmiddleware.OapiRequestValidatorWithOptions(spec,
 			&nethttpmiddleware.Options{
 				SilenceServersWarning: true,
 				ErrorHandler:          validationErrorHandler,
+				Options: openapi3filter.Options{
+					AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
+				},
 			}))
 
 		apiv1.HandlerFromMux(handlers, r)

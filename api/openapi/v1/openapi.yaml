@@ -13,6 +13,9 @@ info:
 servers:
   - url: /api/v1
 
+security:
+  - ApiKeyAuth: []
+
 paths:
   /sessions:
     post:
@@ -51,6 +54,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           description: Internal server error
           content:
@@ -77,6 +84,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           description: Internal server error
           content:
@@ -101,6 +112,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           description: Internal server error
           content:
@@ -149,6 +164,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           description: Internal server error
           content:
@@ -184,6 +203,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '500':
           description: Internal server error
           content:
@@ -192,6 +215,27 @@ paths:
                 $ref: '#/components/schemas/Error'
 
 components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Static API key shared with trusted clients
+
+  responses:
+    Unauthorized:
+      description: API key is missing
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: API key is invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
   parameters:
     SessionId:
       name: id

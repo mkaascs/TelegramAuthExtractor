@@ -26,6 +26,11 @@ type Config struct {
 	Service  Service  `yaml:"service"`
 	Postgres Postgres `yaml:"postgres"`
 	Telegram Telegram `yaml:"-"`
+	Auth     Auth     `yaml:"-"`
+}
+
+type Auth struct {
+	APIKey string `yaml:"-" env:"API_KEY" env-required:"true"`
 }
 
 type Http struct {
