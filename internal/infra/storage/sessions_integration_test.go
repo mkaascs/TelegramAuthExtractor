@@ -92,6 +92,10 @@ func newSessionRepo() *storage.Session {
 	return storage.NewSession(testPool, slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
+func newResultRepo() *storage.Result {
+	return storage.NewResult(testPool, slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
+
 func resultsCount(t *testing.T, sessionID uuid.UUID) int {
 	t.Helper()
 	var count int
@@ -200,4 +204,115 @@ func TestSession_Complete_And_DeleteCascade(t *testing.T) {
 
 	require.NoError(t, repo.Delete(ctx, uuid.UUID(s.ID)))
 	require.Equal(t, 0, resultsCount(t, uuid.UUID(s.ID)), "удаление сессии каскадом снесло результат")
+}
+
+func TestSession_Get_NotFound(t *testing.T) {
+	resetDB(t)
+	repo := newSessionRepo()
+
+	_, err := repo.Get(context.Background(), uuid.New())
+	require.ErrorIs(t, err, domain.ErrSessionNotFound)
+}
+
+func TestSession_Update_PersistsFields(t *testing.T) {
+	resetDB(t)
+	repo := newSessionRepo()
+	ctx := context.Background()
+
+	s := domain.NewSession("+79990000001", time.Hour)
+	_, _, err := repo.CreateOrGetActive(ctx, s)
+	require.NoError(t, err)
+
+	message := "code_timeout"
+	s.Status = domain.StatusWaitingForCode
+	s.Error = &message
+	s.CodeAttempts = 3
+	require.NoError(t, repo.Update(ctx, s))
+
+	got, err := repo.Get(ctx, uuid.UUID(s.ID))
+	require.NoError(t, err)
+	require.Equal(t, domain.StatusWaitingForCode, got.Status)
+	require.NotNil(t, got.Error)
+	require.Equal(t, message, *got.Error)
+	require.Equal(t, 3, got.CodeAttempts)
+}
+
+func TestSession_Update_NotFound(t *testing.T) {
+	resetDB(t)
+	repo := newSessionRepo()
+
+	ghost := domain.NewSession("+79990000009", time.Hour) // не сохранена
+	err := repo.Update(context.Background(), ghost)
+	require.ErrorIs(t, err, domain.ErrSessionNotFound)
+}
+
+func TestSession_Delete_Idempotent(t *testing.T) {
+	resetDB(t)
+	repo := newSessionRepo()
+
+	require.NoError(t, repo.Delete(context.Background(), uuid.New()),
+		"удаление несуществующей сессии не ошибка")
+}
+
+func TestSession_Recipient_RoundTrip(t *testing.T) {
+	resetDB(t)
+	repo := newSessionRepo()
+	ctx := context.Background()
+
+	const recipient = "age1qqpqtest-recipient-public-key"
+	s := domain.NewSession("+79990000001", time.Hour)
+	s.Recipient = recipient
+	_, _, err := repo.CreateOrGetActive(ctx, s)
+	require.NoError(t, err)
+
+	got, err := repo.Get(ctx, uuid.UUID(s.ID))
+	require.NoError(t, err)
+	require.Equal(t, recipient, got.Recipient, "recipient сохраняется и читается")
+
+	claimed, err := repo.ClaimPending(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, claimed, 1)
+	require.Equal(t, recipient, claimed[0].Recipient, "recipient возвращается и в ClaimPending")
+}
+
+func TestSession_Complete_MissingSession_RollsBack(t *testing.T) {
+	resetDB(t)
+	repo := newSessionRepo()
+	ctx := context.Background()
+
+	ghost := domain.NewSession("+79990000009", time.Hour) // не сохранена
+	err := repo.Complete(ctx, ghost, &domain.EncryptedResult{DCID: 1, AuthKeyEncrypted: "x", UserID: 1})
+	require.Error(t, err, "Complete по несуществующей сессии падает")
+	require.Equal(t, 0, resultsCount(t, uuid.UUID(ghost.ID)), "транзакция откатилась: результат не записан")
+}
+
+func TestResult_GetBySession(t *testing.T) {
+	resetDB(t)
+	sessions := newSessionRepo()
+	results := newResultRepo()
+	ctx := context.Background()
+
+	s := domain.NewSession("+79990000001", time.Hour)
+	_, _, err := sessions.CreateOrGetActive(ctx, s)
+	require.NoError(t, err)
+
+	want := &domain.EncryptedResult{
+		DCID:             4,
+		AuthKeyEncrypted: "-----BEGIN AGE ENCRYPTED FILE-----\n...\n-----END AGE ENCRYPTED FILE-----",
+		UserID:           1153367122,
+	}
+	require.NoError(t, sessions.Complete(ctx, s, want))
+
+	got, err := results.GetBySession(ctx, uuid.UUID(s.ID))
+	require.NoError(t, err)
+	require.Equal(t, want, got, "результат читается ровно как записан")
+}
+
+func TestResult_GetBySession_None(t *testing.T) {
+	resetDB(t)
+	results := newResultRepo()
+
+	got, err := results.GetBySession(context.Background(), uuid.New())
+	require.NoError(t, err)
+	require.Nil(t, got, "нет результата -> (nil, nil)")
 }
