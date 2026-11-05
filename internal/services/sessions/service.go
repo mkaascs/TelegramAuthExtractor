@@ -25,28 +25,38 @@ type Processor interface {
 	Cancel(sessionID uuid.UUID) error
 }
 
+type Issuer interface {
+	Issue(id domain.SessionID) (string, error)
+}
+
 type Service struct {
 	sessions  SessionRepository
 	results   ResultRepository
 	processor Processor
+	issuer    Issuer
 	cfg       config.Service
 }
 
-func NewService(sessions SessionRepository, results ResultRepository, processor Processor, cfg config.Service) *Service {
-	return &Service{sessions: sessions, results: results, processor: processor, cfg: cfg}
+func NewService(sessions SessionRepository, results ResultRepository, processor Processor, issuer Issuer, cfg config.Service) *Service {
+	return &Service{sessions: sessions, results: results, processor: processor, issuer: issuer, cfg: cfg}
 }
 
-func (s *Service) CreateSession(ctx context.Context, phone string) (*domain.Session, bool, error) {
+func (s *Service) CreateSession(ctx context.Context, phone string) (*domain.Session, string, bool, error) {
 	const fn = "services.sessions.Service.CreateSession"
 
 	session := domain.NewSession(phone, s.cfg.SessionTTL)
 
 	stored, created, err := s.sessions.CreateOrGetActive(ctx, session)
 	if err != nil {
-		return nil, false, fmt.Errorf("%s: %w", fn, err)
+		return nil, "", false, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	return stored, created, nil
+	token, err := s.issuer.Issue(stored.ID)
+	if err != nil {
+		return nil, "", false, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	return stored, token, created, nil
 }
 
 func (s *Service) DeleteSession(ctx context.Context, sessionID uuid.UUID) error {

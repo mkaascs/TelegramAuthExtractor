@@ -19,6 +19,18 @@ func ToDTOsSession(session *domain.Session) apiv1.Session {
 	}
 }
 
+func ToDTOsSessionCreated(session *domain.Session, token string) apiv1.SessionCreated {
+	return apiv1.SessionCreated{
+		CreatedAt:    session.CreatedAt,
+		Error:        session.Error,
+		Id:           types.UUID(session.ID),
+		Phone:        session.Phone,
+		Status:       apiv1.SessionStatus(session.Status),
+		CodeAttempts: session.CodeAttempts,
+		SessionToken: token,
+	}
+}
+
 func ToDTOsExtractedData(data *domain.ExtractedData) apiv1.ExtractedData {
 	return apiv1.ExtractedData{
 		AuthKey: data.AuthKey,
@@ -29,17 +41,17 @@ func ToDTOsExtractedData(data *domain.ExtractedData) apiv1.ExtractedData {
 
 func ToCreateErrorResponse(_ error) apiv1.CreateSessionResponseObject {
 	return apiv1.CreateSession500JSONResponse(
-		apiv1.Error{Code: ptr("internal_error"), Message: "internal server error"})
+		apiv1.Error{Code: new("internal_error"), Message: "internal server error"})
 }
 
 func ToDeleteErrorResponse(err error) apiv1.DeleteSessionResponseObject {
 	switch {
 	case errors.Is(err, domain.ErrSessionNotFound):
 		return apiv1.DeleteSession404JSONResponse(
-			apiv1.Error{Code: ptr("session_not_found"), Message: "session not found"})
+			apiv1.Error{Code: new("session_not_found"), Message: "session not found"})
 	default:
 		return apiv1.DeleteSession500JSONResponse(
-			apiv1.Error{Code: ptr("internal_error"), Message: "internal server error"})
+			apiv1.Error{Code: new("internal_error"), Message: "internal server error"})
 	}
 }
 
@@ -47,10 +59,10 @@ func ToGetErrorResponse(err error) apiv1.GetSessionResponseObject {
 	switch {
 	case errors.Is(err, domain.ErrSessionNotFound):
 		return apiv1.GetSession404JSONResponse(
-			apiv1.Error{Code: ptr("session_not_found"), Message: "session not found"})
+			apiv1.Error{Code: new("session_not_found"), Message: "session not found"})
 	default:
 		return apiv1.GetSession500JSONResponse(
-			apiv1.Error{Code: ptr("internal_error"), Message: "internal server error"})
+			apiv1.Error{Code: new("internal_error"), Message: "internal server error"})
 	}
 }
 
@@ -58,13 +70,13 @@ func ToSubmitErrorResponse(err error) apiv1.SubmitCodeResponseObject {
 	switch {
 	case errors.Is(err, domain.ErrSessionNotFound):
 		return apiv1.SubmitCode404JSONResponse(
-			apiv1.Error{Code: ptr("session_not_found"), Message: "session not found"})
+			apiv1.Error{Code: new("session_not_found"), Message: "session not found"})
 	case errors.Is(err, domain.ErrWrongState):
 		return apiv1.SubmitCode409JSONResponse(
-			apiv1.Error{Code: ptr("session_not_waiting_for_code"), Message: "current session is not waiting for code"})
+			apiv1.Error{Code: new("session_not_waiting_for_code"), Message: "current session is not waiting for code"})
 	default:
 		return apiv1.SubmitCode500JSONResponse(
-			apiv1.Error{Code: ptr("internal_error"), Message: "internal server error"})
+			apiv1.Error{Code: new("internal_error"), Message: "internal server error"})
 	}
 }
 
@@ -72,16 +84,12 @@ func ToGetResultErrorResponse(err error) apiv1.GetSessionResultResponseObject {
 	switch {
 	case errors.Is(err, domain.ErrSessionNotFound):
 		return apiv1.GetSessionResult404JSONResponse(
-			apiv1.Error{Code: ptr("session_not_found"), Message: "session not found"})
+			apiv1.Error{Code: new("session_not_found"), Message: "session not found"})
 	case errors.Is(err, domain.ErrWrongState):
 		return apiv1.GetSessionResult409JSONResponse(
-			apiv1.Error{Code: ptr("session_not_done"), Message: "current session is not done"})
+			apiv1.Error{Code: new("session_not_done"), Message: "current session is not done"})
 	default:
 		return apiv1.GetSessionResult500JSONResponse(
-			apiv1.Error{Code: ptr("internal_error"), Message: "internal server error"})
+			apiv1.Error{Code: new("internal_error"), Message: "internal server error"})
 	}
-}
-
-func ptr(text string) *string {
-	return &text
 }

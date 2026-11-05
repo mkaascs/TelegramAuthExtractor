@@ -18,7 +18,6 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
-	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
@@ -112,6 +111,30 @@ type Session struct {
 	Status SessionStatus `json:"status"`
 }
 
+// SessionCreated defines model for SessionCreated.
+type SessionCreated struct {
+	CodeAttempts int       `json:"code_attempts"`
+	CreatedAt    time.Time `json:"created_at"`
+
+	// Error Reason for the `failed` transition; omitted otherwise
+	//
+	// Example: code_timeout
+	Error *string            `json:"error,omitempty"`
+	Id    openapi_types.UUID `json:"id"`
+
+	// Phone Example: +79991234567
+	Phone string `json:"phone"`
+
+	// SessionToken Per-session capability token (JWT). Returned only on creation; required in the Authorization header for all operations on this session
+	//
+	//
+	// Example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+	SessionToken string `json:"session_token"`
+
+	// Status Stage in the task lifecycle
+	Status SessionStatus `json:"status"`
+}
+
 // SessionStatus Stage in the task lifecycle
 type SessionStatus string
 
@@ -123,8 +146,11 @@ type SubmitCodeRequest struct {
 	Code string `json:"code"`
 }
 
-// SessionId defines model for SessionId.
-type SessionId = openapi_types.UUID
+// Forbidden defines model for Forbidden.
+type Forbidden = Error
+
+// Unauthorized defines model for Unauthorized.
+type Unauthorized = Error
 
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = CreateSessionRequest
@@ -138,17 +164,17 @@ type ServerInterface interface {
 	// (POST /sessions)
 	CreateSession(w http.ResponseWriter, r *http.Request)
 	// DeleteSession Cancel the task and clean up the device
-	// (DELETE /sessions/{id})
-	DeleteSession(w http.ResponseWriter, r *http.Request, id SessionId)
+	// (DELETE /sessions/me)
+	DeleteSession(w http.ResponseWriter, r *http.Request)
 	// GetSession Get task status
-	// (GET /sessions/{id})
-	GetSession(w http.ResponseWriter, r *http.Request, id SessionId)
+	// (GET /sessions/me)
+	GetSession(w http.ResponseWriter, r *http.Request)
 	// SubmitCode Submit the confirmation code
-	// (POST /sessions/{id}/code)
-	SubmitCode(w http.ResponseWriter, r *http.Request, id SessionId)
+	// (POST /sessions/me/code)
+	SubmitCode(w http.ResponseWriter, r *http.Request)
 	// GetSessionResult Fetch the extracted data
-	// (GET /sessions/{id}/result)
-	GetSessionResult(w http.ResponseWriter, r *http.Request, id SessionId)
+	// (GET /sessions/me/result)
+	GetSessionResult(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -162,26 +188,26 @@ func (_ Unimplemented) CreateSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteSession Cancel the task and clean up the device
-// (DELETE /sessions/{id})
-func (_ Unimplemented) DeleteSession(w http.ResponseWriter, r *http.Request, id SessionId) {
+// (DELETE /sessions/me)
+func (_ Unimplemented) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetSession Get task status
-// (GET /sessions/{id})
-func (_ Unimplemented) GetSession(w http.ResponseWriter, r *http.Request, id SessionId) {
+// (GET /sessions/me)
+func (_ Unimplemented) GetSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // SubmitCode Submit the confirmation code
-// (POST /sessions/{id}/code)
-func (_ Unimplemented) SubmitCode(w http.ResponseWriter, r *http.Request, id SessionId) {
+// (POST /sessions/me/code)
+func (_ Unimplemented) SubmitCode(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
 // GetSessionResult Fetch the extracted data
-// (GET /sessions/{id}/result)
-func (_ Unimplemented) GetSessionResult(w http.ResponseWriter, r *http.Request, id SessionId) {
+// (GET /sessions/me/result)
+func (_ Unimplemented) GetSessionResult(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -211,20 +237,8 @@ func (siw *ServerInterfaceWrapper) CreateSession(w http.ResponseWriter, r *http.
 // DeleteSession operation middleware
 func (siw *ServerInterfaceWrapper) DeleteSession(w http.ResponseWriter, r *http.Request) {
 
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id SessionId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteSession(w, r, id)
+		siw.Handler.DeleteSession(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -237,20 +251,8 @@ func (siw *ServerInterfaceWrapper) DeleteSession(w http.ResponseWriter, r *http.
 // GetSession operation middleware
 func (siw *ServerInterfaceWrapper) GetSession(w http.ResponseWriter, r *http.Request) {
 
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id SessionId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetSession(w, r, id)
+		siw.Handler.GetSession(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -263,20 +265,8 @@ func (siw *ServerInterfaceWrapper) GetSession(w http.ResponseWriter, r *http.Req
 // SubmitCode operation middleware
 func (siw *ServerInterfaceWrapper) SubmitCode(w http.ResponseWriter, r *http.Request) {
 
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id SessionId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SubmitCode(w, r, id)
+		siw.Handler.SubmitCode(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -289,20 +279,8 @@ func (siw *ServerInterfaceWrapper) SubmitCode(w http.ResponseWriter, r *http.Req
 // GetSessionResult operation middleware
 func (siw *ServerInterfaceWrapper) GetSessionResult(w http.ResponseWriter, r *http.Request) {
 
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id SessionId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetSessionResult(w, r, id)
+		siw.Handler.GetSessionResult(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -429,20 +407,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/sessions", wrapper.CreateSession)
 	})
 	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/sessions/{id}", wrapper.DeleteSession)
+		r.Delete(options.BaseURL+"/sessions/me", wrapper.DeleteSession)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/sessions/{id}", wrapper.GetSession)
+		r.Get(options.BaseURL+"/sessions/me", wrapper.GetSession)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/sessions/{id}/code", wrapper.SubmitCode)
+		r.Post(options.BaseURL+"/sessions/me/code", wrapper.SubmitCode)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/sessions/{id}/result", wrapper.GetSessionResult)
+		r.Get(options.BaseURL+"/sessions/me/result", wrapper.GetSessionResult)
 	})
 
 	return r
 }
+
+type ForbiddenJSONResponse Error
+
+type UnauthorizedJSONResponse Error
 
 type CreateSessionRequestObject struct {
 	Body *CreateSessionJSONRequestBody
@@ -452,7 +434,7 @@ type CreateSessionResponseObject interface {
 	VisitCreateSessionResponse(w http.ResponseWriter) error
 }
 
-type CreateSession200JSONResponse Session
+type CreateSession200JSONResponse SessionCreated
 
 func (response CreateSession200JSONResponse) VisitCreateSessionResponse(w http.ResponseWriter) error {
 
@@ -466,7 +448,7 @@ func (response CreateSession200JSONResponse) VisitCreateSessionResponse(w http.R
 	return err
 }
 
-type CreateSession202JSONResponse Session
+type CreateSession202JSONResponse SessionCreated
 
 func (response CreateSession202JSONResponse) VisitCreateSessionResponse(w http.ResponseWriter) error {
 
@@ -494,6 +476,34 @@ func (response CreateSession400JSONResponse) VisitCreateSessionResponse(w http.R
 	return err
 }
 
+type CreateSession401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateSession401JSONResponse) VisitCreateSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSession403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateSession403JSONResponse) VisitCreateSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateSession500JSONResponse Error
 
 func (response CreateSession500JSONResponse) VisitCreateSessionResponse(w http.ResponseWriter) error {
@@ -509,7 +519,6 @@ func (response CreateSession500JSONResponse) VisitCreateSessionResponse(w http.R
 }
 
 type DeleteSessionRequestObject struct {
-	Id SessionId `json:"id"`
 }
 
 type DeleteSessionResponseObject interface {
@@ -522,6 +531,34 @@ type DeleteSession204Response struct {
 func (response DeleteSession204Response) VisitDeleteSessionResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
+}
+
+type DeleteSession401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteSession401JSONResponse) VisitDeleteSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSession403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteSession403JSONResponse) VisitDeleteSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type DeleteSession404JSONResponse Error
@@ -553,7 +590,6 @@ func (response DeleteSession500JSONResponse) VisitDeleteSessionResponse(w http.R
 }
 
 type GetSessionRequestObject struct {
-	Id SessionId `json:"id"`
 }
 
 type GetSessionResponseObject interface {
@@ -570,6 +606,34 @@ func (response GetSession200JSONResponse) VisitGetSessionResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSession401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetSession401JSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSession403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetSession403JSONResponse) VisitGetSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -603,7 +667,6 @@ func (response GetSession500JSONResponse) VisitGetSessionResponse(w http.Respons
 }
 
 type SubmitCodeRequestObject struct {
-	Id   SessionId `json:"id"`
 	Body *SubmitCodeJSONRequestBody
 }
 
@@ -635,6 +698,34 @@ func (response SubmitCode400JSONResponse) VisitSubmitCodeResponse(w http.Respons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitCode401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response SubmitCode401JSONResponse) VisitSubmitCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitCode403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response SubmitCode403JSONResponse) VisitSubmitCodeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -682,7 +773,6 @@ func (response SubmitCode500JSONResponse) VisitSubmitCodeResponse(w http.Respons
 }
 
 type GetSessionResultRequestObject struct {
-	Id SessionId `json:"id"`
 }
 
 type GetSessionResultResponseObject interface {
@@ -699,6 +789,34 @@ func (response GetSessionResult200JSONResponse) VisitGetSessionResultResponse(w 
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionResult401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetSessionResult401JSONResponse) VisitGetSessionResultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSessionResult403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetSessionResult403JSONResponse) VisitGetSessionResultResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -751,16 +869,16 @@ type StrictServerInterface interface {
 	// (POST /sessions)
 	CreateSession(ctx context.Context, request CreateSessionRequestObject) (CreateSessionResponseObject, error)
 	// DeleteSession Cancel the task and clean up the device
-	// (DELETE /sessions/{id})
+	// (DELETE /sessions/me)
 	DeleteSession(ctx context.Context, request DeleteSessionRequestObject) (DeleteSessionResponseObject, error)
 	// GetSession Get task status
-	// (GET /sessions/{id})
+	// (GET /sessions/me)
 	GetSession(ctx context.Context, request GetSessionRequestObject) (GetSessionResponseObject, error)
 	// SubmitCode Submit the confirmation code
-	// (POST /sessions/{id}/code)
+	// (POST /sessions/me/code)
 	SubmitCode(ctx context.Context, request SubmitCodeRequestObject) (SubmitCodeResponseObject, error)
 	// GetSessionResult Fetch the extracted data
-	// (GET /sessions/{id}/result)
+	// (GET /sessions/me/result)
 	GetSessionResult(ctx context.Context, request GetSessionResultRequestObject) (GetSessionResultResponseObject, error)
 }
 
@@ -835,10 +953,8 @@ func (sh *strictHandler) CreateSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // DeleteSession operation middleware
-func (sh *strictHandler) DeleteSession(w http.ResponseWriter, r *http.Request, id SessionId) {
+func (sh *strictHandler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	var request DeleteSessionRequestObject
-
-	request.Id = id
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.DeleteSession(ctx, request.(DeleteSessionRequestObject))
@@ -861,10 +977,8 @@ func (sh *strictHandler) DeleteSession(w http.ResponseWriter, r *http.Request, i
 }
 
 // GetSession operation middleware
-func (sh *strictHandler) GetSession(w http.ResponseWriter, r *http.Request, id SessionId) {
+func (sh *strictHandler) GetSession(w http.ResponseWriter, r *http.Request) {
 	var request GetSessionRequestObject
-
-	request.Id = id
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetSession(ctx, request.(GetSessionRequestObject))
@@ -887,10 +1001,8 @@ func (sh *strictHandler) GetSession(w http.ResponseWriter, r *http.Request, id S
 }
 
 // SubmitCode operation middleware
-func (sh *strictHandler) SubmitCode(w http.ResponseWriter, r *http.Request, id SessionId) {
+func (sh *strictHandler) SubmitCode(w http.ResponseWriter, r *http.Request) {
 	var request SubmitCodeRequestObject
-
-	request.Id = id
 
 	var body SubmitCodeJSONRequestBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -920,10 +1032,8 @@ func (sh *strictHandler) SubmitCode(w http.ResponseWriter, r *http.Request, id S
 }
 
 // GetSessionResult operation middleware
-func (sh *strictHandler) GetSessionResult(w http.ResponseWriter, r *http.Request, id SessionId) {
+func (sh *strictHandler) GetSessionResult(w http.ResponseWriter, r *http.Request) {
 	var request GetSessionResultRequestObject
-
-	request.Id = id
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.GetSessionResult(ctx, request.(GetSessionResultRequestObject))
@@ -950,36 +1060,41 @@ func (sh *strictHandler) GetSessionResult(w http.ResponseWriter, r *http.Request
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"7Fhfb9s4Ev8qA94+JFjVjhMnRbxP3ra7yENxi6T31PRcRhxb3EqkSo6c+gID9yHuE94nOQxJS/6jZhe4",
-	"bto77KMEivPjb37z44weRG6r2ho05MXkQdTSyQoJXXi6Qe+1NVeKHxT63OmatDViIt5I/wG0QkN6rtGJ",
-	"TGh+XUsqRCaMrFBMhFYiEw4/NtqhEhNyDWbC5wVWknecW1dJEhPRNGElrWr+ypPTZiHW6/VmcQDzwqEk",
-	"TJCu8WODngJkZ2t0pDEeoLAGD+H+wq/BNNUdOtAGXg1GF2NIADKBn2RVlxz8++eXl5ej07Px+cVzkfF5",
-	"CB3v8Pfb2+/fjp5dvru9VQ+jbDRef9cDefu4bxOYd+0ye/cr5iTWmXjlnHWH6HOresC/lnmhDT5zKJW8",
-	"KxGQv4aweBu7j9zMjKXZvdSkzWI2t26WFu5hzUSF3stFCHiwCWgPxhKkfZiqEBCO8sY5NDSB0i4WHEKb",
-	"499kYhOql4tP5GROqF5KkoecyIaK2Qdc9SQVXSVZusBr4AOu4Oj0/ALuVoT+OIM76fFi/AwNA2eBtYLj",
-	"FX2MqHyme8Q+zXPbGILCVghKkszREDo4cuhtuUQFSy3hbzevrmevr36+nr55dbydmNM2kjaEC3QcqvHo",
-	"UrB24Wh0fnZ28Xx0erqFVRu6GIvDLfYYjtCzjq4uRB/pqY76JThj1Vd1tIRD6HmoRDWTtFPFShI+I131",
-	"Mosbwe8ye43SWxPURQXC+7nUJar3QE4ar3nRD2ArTYQKLBXo7rXfFX3Ay1Ftw5VsmrLkGtm4zQGQSPlv",
-	"WE/W+chnreHgE0+SmkDZdw7nYiL+MuzMdZicbJiIv4mL97MYwMTY7YY7hGd7CXoktzctnl3Ob0gukE2Q",
-	"GSf28VLPMV/lZWDWNFXwLjSKD5aJjw02oXy6gheZ6DGYUBT8rnWmUNhxl7xEaZpaZELF08VUbx2gY/Km",
-	"uas0vbAKP+vz/U75wpq55syygwW7mjtbwc3rm+EbLHHhZLUjnpDNfZtXD+fZxe9w9wDhkH9eps3c9hCP",
-	"bqlzDGrvuIENsuBi1ul/RPjsM3C0KecMQoFnkIr6OJ5MwlI7amQJU6Oc1WoAbwoEnyJ5vTAetCEbki2T",
-	"j7FbTV/++EN4mR9wpj34kAGuukqaRpblCqhwtlkUIEGh0jkLEtCo2mpDMSrnJ26jPUi/MnnhrLGNn8RA",
-	"pWavjmL2IIP2MqhtWXrQ5CHqPQNpFMyR8gJ9+NChb0oCa3LsNFtID3NttC9QDW5ZkaQpJLXlc8q3Qrpd",
-	"rIPpL1ciE0t00fjEaHAyOGG52RqNrLWYiLPByeAs6qEIMhum6zD2FjYq8aCcHEWgbR3FA2+yEOoirqi3",
-	"+5CUhnBeh7I9b0yCqRsCnztEM4BrpMYZ3x1fG3ifSvR9Ig50VaHSkrBcZXCvqbDN/gXOumfcA7iagzTQ",
-	"mA2HcduNEXtZ7YGVJbcfK8BP2pPPgApJCYoHF+ChAm08oVRg5zHPHFmCwXvgrY60wqq2xDJwSG51HDPX",
-	"Coc7zd1GLzWQ6OlHq1ax8g1vEFqDui5Zidqa4a8+3mZde/mYC/c2k+vdCucLJLzwtTU+2s7pyckXw7A5",
-	"YQi7q6mrPZ7g3//81+fTpf1jqQry2s6R9KD9rWHln56cPsVxpkEBAfG99MkBVACWLpd1JsZfkNrYXvcg",
-	"eS1LvvqRCy4lPRPnTxH5ik3AyDK4ArrYw4c7xTdVJd2qVT4nenM9WBNoC+taLxo+aLWORlQi9VyD0zvr",
-	"QuKB91gmyzjSJi8bdgy4L3SJO9aw8Z3j5Ead3SgMJkYWJIRLPNgNwlFdhWd3PICfbKe6HYWysYPXVV2u",
-	"wGFll62l59apvup/Gc7UVf/2RPq2n/tuybCbWNfvDkp3/JkxNpcmx7JENYwQkxzHf7woQnges+a2Merb",
-	"0mIgpbtwWBYx/U29pQvGvMAAdDePPyP9IUl8Ev99EWfcePIg9z8lEVLaMZKGl11TGm7a8v5WaZrnWIdR",
-	"zpSrZEJdR+NDU7M/V2y6m9hibvrT0FKFfoNs10CnhioDOefx/L7QedEFYAK1aTA2m7WusdTclGx5LYt8",
-	"iU7PE7u9/Uk3nfzXyv7yjc3h6PS7uponaQMYFc8gQQPZflJqZ3P+No6AX68b+EpVPj65fKKwPX/2ZPq3",
-	"5xEh/d9rhwoDd1atjr8pJ4oq7x9f+2wpTpAMKd1Ve760lDr8NXrMmJQ1W2b0183PqLZXGp9chqErojog",
-	"kd8ykX2O0t2V1xHoN3pj7v6p7cldu6DnX8b/e23F1G2qK/bCK6T/naL6CSldl9imUbWJjh9GNTauFBMx",
-	"lLUeLkdi/W79nwAAAP//",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

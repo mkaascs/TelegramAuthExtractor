@@ -13,6 +13,7 @@ import (
 	"telegram-auth-extractor/internal/delivery/rest/middlewares"
 	"telegram-auth-extractor/internal/lib/logging/sloglib"
 
+	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	nethttpmiddleware "github.com/oapi-codegen/nethttp-middleware"
@@ -23,7 +24,7 @@ type Server struct {
 	http *http.Server
 }
 
-func NewServer(handlers apiv1.ServerInterface, cfg config.Config, lg *slog.Logger) *Server {
+func NewServer(handlers apiv1.ServerInterface, verifier middlewares.Verifier, cfg config.Config, lg *slog.Logger) *Server {
 	spec, err := apiv1.GetSpec()
 	if err != nil {
 		log.Fatal("failed to get spec")
@@ -42,14 +43,34 @@ func NewServer(handlers apiv1.ServerInterface, cfg config.Config, lg *slog.Logge
 			"/swagger/"))
 	}
 
-	router.Route("/api/v1", func(r chi.Router) {
-		r.Use(nethttpmiddleware.OapiRequestValidatorWithOptions(spec,
-			&nethttpmiddleware.Options{
-				SilenceServersWarning: true,
-				ErrorHandler:          validationErrorHandler,
-			}))
+	validator := nethttpmiddleware.OapiRequestValidatorWithOptions(spec,
+		&nethttpmiddleware.Options{
+			SilenceServersWarning: true,
+			ErrorHandler:          validationErrorHandler,
+			Options: openapi3filter.Options{
+				AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
+			},
+		})
 
-		apiv1.HandlerFromMux(handlers, r)
+	wrapper := &apiv1.ServerInterfaceWrapper{Handler: handlers}
+
+	router.Route("/api/v1", func(r chi.Router) {
+		r.Use(middlewares.NewAPIKeyAuth(cfg.Auth.APIKey, lg))
+
+		r.Group(func(r chi.Router) {
+			r.Use(validator)
+			r.Post("/sessions", wrapper.CreateSession)
+		})
+
+		r.Route("/sessions/me", func(r chi.Router) {
+			r.Use(middlewares.NewSessionAuth(verifier, lg))
+			r.Use(validator)
+
+			r.Get("/", wrapper.GetSession)
+			r.Delete("/", wrapper.DeleteSession)
+			r.Post("/code", wrapper.SubmitCode)
+			r.Get("/result", wrapper.GetSessionResult)
+		})
 	})
 
 	return &Server{http: &http.Server{
