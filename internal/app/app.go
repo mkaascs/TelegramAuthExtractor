@@ -15,6 +15,7 @@ import (
 	"telegram-auth-extractor/internal/infra/storage"
 	"telegram-auth-extractor/internal/infra/telegram"
 	"telegram-auth-extractor/internal/infra/tgnet"
+	"telegram-auth-extractor/internal/infra/token"
 	"telegram-auth-extractor/internal/lib/logging/sloglib"
 	"telegram-auth-extractor/internal/services/sessions"
 	"telegram-auth-extractor/internal/services/workers"
@@ -53,8 +54,10 @@ func NewApp(cfg config.Config, log *slog.Logger) *App {
 
 	dispatcher := workers.NewDispatcher(sessionRepo, worker, log, cfg.Service.Dispatcher)
 
-	svc := sessions.NewService(sessionRepo, resultRepo, worker, cfg.Service)
-	srv := server.NewServer(rest.NewHandler(svc), cfg, log)
+	tokens := token.NewManager(cfg.Auth.JWTSecret)
+
+	svc := sessions.NewService(sessionRepo, resultRepo, worker, tokens, cfg.Service)
+	srv := server.NewServer(rest.NewHandler(svc), tokens, cfg, log)
 
 	log.Info("application has been initialized")
 

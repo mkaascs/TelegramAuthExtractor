@@ -10,18 +10,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	apiv1 "telegram-auth-extractor/gen/rest/v1"
+	"telegram-auth-extractor/internal/delivery/rest/middlewares"
 	"telegram-auth-extractor/internal/domain"
 )
 
 type mockService struct {
-	createFn    func(ctx context.Context, phone string) (*domain.Session, bool, error)
+	createFn    func(ctx context.Context, phone string) (*domain.Session, string, bool, error)
 	deleteFn    func(ctx context.Context, id uuid.UUID) error
 	getFn       func(ctx context.Context, id uuid.UUID) (*domain.Session, error)
 	submitFn    func(ctx context.Context, id uuid.UUID, code string) (*domain.Session, error)
 	getResultFn func(ctx context.Context, id uuid.UUID) (*domain.ExtractedData, error)
 }
 
-func (m mockService) CreateSession(ctx context.Context, phone string) (*domain.Session, bool, error) {
+func (m mockService) CreateSession(ctx context.Context, phone string) (*domain.Session, string, bool, error) {
 	return m.createFn(ctx, phone)
 }
 
@@ -57,9 +58,9 @@ func TestSessionHandler_CreateSession(t *testing.T) {
 	t.Run("created -> 202", func(t *testing.T) {
 		sess := fakeSession()
 		h := NewSessionHandler(mockService{
-			createFn: func(_ context.Context, p string) (*domain.Session, bool, error) {
+			createFn: func(_ context.Context, p string) (*domain.Session, string, bool, error) {
 				require.Equal(t, phone, p)
-				return sess, true, nil
+				return sess, "test-token", true, nil
 			},
 		})
 
@@ -75,8 +76,8 @@ func TestSessionHandler_CreateSession(t *testing.T) {
 
 	t.Run("idempotent (created=false) -> 200", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
-			createFn: func(_ context.Context, _ string) (*domain.Session, bool, error) {
-				return fakeSession(), false, nil
+			createFn: func(_ context.Context, _ string) (*domain.Session, string, bool, error) {
+				return fakeSession(), "test-token", false, nil
 			},
 		})
 
@@ -91,8 +92,8 @@ func TestSessionHandler_CreateSession(t *testing.T) {
 
 	t.Run("service error -> 500", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
-			createFn: func(_ context.Context, _ string) (*domain.Session, bool, error) {
-				return nil, false, errors.New("boom")
+			createFn: func(_ context.Context, _ string) (*domain.Session, string, bool, error) {
+				return nil, "", false, errors.New("boom")
 			},
 		})
 
@@ -109,8 +110,8 @@ func TestSessionHandler_CreateSession(t *testing.T) {
 }
 
 func TestSessionHandler_GetSession(t *testing.T) {
-	ctx := context.Background()
 	id := uuid.New()
+	ctx := middlewares.WithSessionID(context.Background(), domain.SessionID(id))
 
 	t.Run("found -> 200", func(t *testing.T) {
 		sess := fakeSession()
@@ -122,7 +123,7 @@ func TestSessionHandler_GetSession(t *testing.T) {
 			},
 		})
 
-		resp, err := h.GetSession(ctx, apiv1.GetSessionRequestObject{Id: id})
+		resp, err := h.GetSession(ctx, apiv1.GetSessionRequestObject{})
 		require.NoError(t, err)
 
 		_, ok := resp.(apiv1.GetSession200JSONResponse)
@@ -136,7 +137,7 @@ func TestSessionHandler_GetSession(t *testing.T) {
 			},
 		})
 
-		resp, err := h.GetSession(ctx, apiv1.GetSessionRequestObject{Id: id})
+		resp, err := h.GetSession(ctx, apiv1.GetSessionRequestObject{})
 		require.NoError(t, err)
 
 		got, ok := resp.(apiv1.GetSession404JSONResponse)
@@ -146,8 +147,8 @@ func TestSessionHandler_GetSession(t *testing.T) {
 }
 
 func TestSessionHandler_SubmitCode(t *testing.T) {
-	ctx := context.Background()
 	id := uuid.New()
+	ctx := middlewares.WithSessionID(context.Background(), domain.SessionID(id))
 	const code = "12345"
 
 	t.Run("accepted -> 202", func(t *testing.T) {
@@ -159,7 +160,6 @@ func TestSessionHandler_SubmitCode(t *testing.T) {
 		})
 
 		resp, err := h.SubmitCode(ctx, apiv1.SubmitCodeRequestObject{
-			Id:   id,
 			Body: &apiv1.SubmitCodeRequest{Code: code},
 		})
 		require.NoError(t, err)
@@ -176,7 +176,6 @@ func TestSessionHandler_SubmitCode(t *testing.T) {
 		})
 
 		resp, err := h.SubmitCode(ctx, apiv1.SubmitCodeRequestObject{
-			Id:   id,
 			Body: &apiv1.SubmitCodeRequest{Code: code},
 		})
 		require.NoError(t, err)
@@ -194,7 +193,6 @@ func TestSessionHandler_SubmitCode(t *testing.T) {
 		})
 
 		resp, err := h.SubmitCode(ctx, apiv1.SubmitCodeRequestObject{
-			Id:   id,
 			Body: &apiv1.SubmitCodeRequest{Code: code},
 		})
 		require.NoError(t, err)
@@ -205,8 +203,8 @@ func TestSessionHandler_SubmitCode(t *testing.T) {
 }
 
 func TestSessionHandler_GetSessionResult(t *testing.T) {
-	ctx := context.Background()
 	id := uuid.New()
+	ctx := middlewares.WithSessionID(context.Background(), domain.SessionID(id))
 
 	t.Run("done -> 200 with data", func(t *testing.T) {
 		data := &domain.ExtractedData{
@@ -220,7 +218,7 @@ func TestSessionHandler_GetSessionResult(t *testing.T) {
 			},
 		})
 
-		resp, err := h.GetSessionResult(ctx, apiv1.GetSessionResultRequestObject{Id: id})
+		resp, err := h.GetSessionResult(ctx, apiv1.GetSessionResultRequestObject{})
 		require.NoError(t, err)
 
 		got, ok := resp.(apiv1.GetSessionResult200JSONResponse)
@@ -237,7 +235,7 @@ func TestSessionHandler_GetSessionResult(t *testing.T) {
 			},
 		})
 
-		resp, err := h.GetSessionResult(ctx, apiv1.GetSessionResultRequestObject{Id: id})
+		resp, err := h.GetSessionResult(ctx, apiv1.GetSessionResultRequestObject{})
 		require.NoError(t, err)
 
 		got, ok := resp.(apiv1.GetSessionResult409JSONResponse)
@@ -252,7 +250,7 @@ func TestSessionHandler_GetSessionResult(t *testing.T) {
 			},
 		})
 
-		resp, err := h.GetSessionResult(ctx, apiv1.GetSessionResultRequestObject{Id: id})
+		resp, err := h.GetSessionResult(ctx, apiv1.GetSessionResultRequestObject{})
 		require.NoError(t, err)
 
 		_, ok := resp.(apiv1.GetSessionResult404JSONResponse)
@@ -261,15 +259,15 @@ func TestSessionHandler_GetSessionResult(t *testing.T) {
 }
 
 func TestSessionHandler_DeleteSession(t *testing.T) {
-	ctx := context.Background()
 	id := uuid.New()
+	ctx := middlewares.WithSessionID(context.Background(), domain.SessionID(id))
 
 	t.Run("deleted -> 204", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
 			deleteFn: func(_ context.Context, _ uuid.UUID) error { return nil },
 		})
 
-		resp, err := h.DeleteSession(ctx, apiv1.DeleteSessionRequestObject{Id: id})
+		resp, err := h.DeleteSession(ctx, apiv1.DeleteSessionRequestObject{})
 		require.NoError(t, err)
 
 		_, ok := resp.(apiv1.DeleteSession204Response)
@@ -281,7 +279,7 @@ func TestSessionHandler_DeleteSession(t *testing.T) {
 			deleteFn: func(_ context.Context, _ uuid.UUID) error { return domain.ErrSessionNotFound },
 		})
 
-		resp, err := h.DeleteSession(ctx, apiv1.DeleteSessionRequestObject{Id: id})
+		resp, err := h.DeleteSession(ctx, apiv1.DeleteSessionRequestObject{})
 		require.NoError(t, err)
 
 		got, ok := resp.(apiv1.DeleteSession404JSONResponse)

@@ -30,7 +30,8 @@ type Config struct {
 }
 
 type Auth struct {
-	APIKey string `yaml:"-" env:"API_KEY" env-required:"true"`
+	APIKey    string `yaml:"-" env:"API_KEY" env-required:"true"`
+	JWTSecret string `yaml:"-" env:"JWT_SECRET" env-required:"true"`
 }
 
 type Http struct {

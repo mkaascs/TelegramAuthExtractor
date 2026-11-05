@@ -14,7 +14,7 @@ func NewAPIKeyAuth(apiKey string, log *slog.Logger) func(http.Handler) http.Hand
 	expected := []byte(apiKey)
 
 	return func(next http.Handler) http.Handler {
-		log = log.With(slog.String("component", "middlewares/auth"))
+		log = log.With(slog.String("component", "middlewares/api_auth"))
 		log.Info("api key auth middleware is enabled")
 
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

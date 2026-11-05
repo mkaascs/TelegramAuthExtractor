@@ -41,13 +41,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Session'
+                $ref: '#/components/schemas/SessionCreated'
         '202':
           description: A new task was created and queued
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Session'
+                $ref: '#/components/schemas/SessionCreated'
         '400':
           description: Malformed request
           content:
@@ -65,12 +65,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /sessions/{id}:
+  /sessions/me:
     get:
       operationId: getSession
       summary: Get task status
-      parameters:
-        - $ref: '#/components/parameters/SessionId'
+      security:
+        - ApiKeyAuth: []
+          SessionToken: []
       responses:
         '200':
           description: Current task state
@@ -97,12 +98,13 @@ paths:
     delete:
       operationId: deleteSession
       summary: Cancel the task and clean up the device
+      security:
+        - ApiKeyAuth: []
+          SessionToken: []
       description: >
         Aborts an active task (including while waiting for the code) and
         returns the device to a clean state (pm clear). For already finished
         tasks it simply removes the record.
-      parameters:
-        - $ref: '#/components/parameters/SessionId'
       responses:
         '204':
           description: Task cancelled/removed
@@ -123,16 +125,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /sessions/{id}/code:
+  /sessions/me/code:
     post:
       operationId: submitCode
       summary: Submit the confirmation code
+      security:
+        - ApiKeyAuth: []
+          SessionToken: []
       description: >
         Accepted only while the task is in `waiting_for_code` status. The code
         is entered into Telegram via ADB, after which the task continues its
         pipeline (extraction and verification).
-      parameters:
-        - $ref: '#/components/parameters/SessionId'
       requestBody:
         required: true
         content:
@@ -175,15 +178,16 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /sessions/{id}/result:
+  /sessions/me/result:
     get:
       operationId: getSessionResult
       summary: Fetch the extracted data
+      security:
+        - ApiKeyAuth: []
+          SessionToken: []
       description: >
         Available only while the task is in `done` status. Otherwise returns
         409 with the current status in the body.
-      parameters:
-        - $ref: '#/components/parameters/SessionId'
       responses:
         '200':
           description: Extracted authorization data
@@ -221,6 +225,14 @@ components:
       in: header
       name: X-API-Key
       description: Static API key shared with trusted clients
+    SessionToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Per-session capability token issued on session creation. Scopes access
+        to a single session; required alongside the API key on all operations
+        that address a session by id
 
   responses:
     Unauthorized:
@@ -235,16 +247,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-
-  parameters:
-    SessionId:
-      name: id
-      in: path
-      required: true
-      description: Task identifier
-      schema:
-        type: string
-        format: uuid
 
   schemas:
     SessionStatus:
@@ -310,6 +312,21 @@ components:
         created_at:
           type: string
           format: date-time
+
+    SessionCreated:
+      allOf:
+        - $ref: '#/components/schemas/Session'
+        - type: object
+          required:
+            - session_token
+          properties:
+            session_token:
+              type: string
+              description: >
+                Per-session capability token (JWT). Returned only on creation;
+                required in the Authorization header for all operations on this
+                session
+              example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
     ExtractedData:
       type: object

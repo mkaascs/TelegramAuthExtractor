@@ -58,6 +58,17 @@ func (m mockProcessor) Cancel(id uuid.UUID) error {
 	return m.cancelFn(id)
 }
 
+type mockIssuer struct {
+	issueFn func(id domain.SessionID) (string, error)
+}
+
+func (m mockIssuer) Issue(id domain.SessionID) (string, error) {
+	if m.issueFn == nil {
+		return "test-token", nil
+	}
+	return m.issueFn(id)
+}
+
 func TestService_CreateSession(t *testing.T) {
 	ctx := context.Background()
 	const phone = "+79991234567"
@@ -71,10 +82,11 @@ func TestService_CreateSession(t *testing.T) {
 			},
 			mockResultRepo{},
 			mockProcessor{},
+			mockIssuer{},
 			config.Service{},
 		)
 
-		session, created, err := svc.CreateSession(ctx, phone)
+		session, _, created, err := svc.CreateSession(ctx, phone)
 		require.NoError(t, err)
 		require.True(t, created)
 		require.Equal(t, phone, session.Phone)
@@ -90,10 +102,11 @@ func TestService_CreateSession(t *testing.T) {
 			},
 			mockResultRepo{},
 			mockProcessor{},
+			mockIssuer{},
 			config.Service{},
 		)
 
-		session, created, err := svc.CreateSession(ctx, phone)
+		session, _, created, err := svc.CreateSession(ctx, phone)
 		require.NoError(t, err)
 		require.False(t, created)
 		require.Equal(t, idOf(existing), idOf(session))
@@ -109,10 +122,11 @@ func TestService_CreateSession(t *testing.T) {
 			},
 			mockResultRepo{},
 			mockProcessor{},
+			mockIssuer{},
 			config.Service{},
 		)
 
-		_, _, err := svc.CreateSession(ctx, phone)
+		_, _, _, err := svc.CreateSession(ctx, phone)
 		require.ErrorIs(t, err, wantErr)
 	})
 }
@@ -126,6 +140,7 @@ func TestService_GetSession(t *testing.T) {
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil }},
 			mockResultRepo{},
 			mockProcessor{},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -141,6 +156,7 @@ func TestService_GetSession(t *testing.T) {
 			}},
 			mockResultRepo{},
 			mockProcessor{},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -163,6 +179,7 @@ func TestService_GetSessionResult(t *testing.T) {
 				return result, nil
 			}},
 			mockProcessor{},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -180,6 +197,7 @@ func TestService_GetSessionResult(t *testing.T) {
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil }},
 			mockResultRepo{},
 			mockProcessor{},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -197,6 +215,7 @@ func TestService_GetSessionResult(t *testing.T) {
 				return nil, nil
 			}},
 			mockProcessor{},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -211,6 +230,7 @@ func TestService_GetSessionResult(t *testing.T) {
 			}},
 			mockResultRepo{},
 			mockProcessor{},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -229,6 +249,7 @@ func TestService_SubmitCode(t *testing.T) {
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil }},
 			mockResultRepo{},
 			mockProcessor{submitCodeFn: func(_ uuid.UUID, _ string) error { called = true; return nil }},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -245,6 +266,7 @@ func TestService_SubmitCode(t *testing.T) {
 			}},
 			mockResultRepo{},
 			mockProcessor{},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -258,6 +280,7 @@ func TestService_SubmitCode(t *testing.T) {
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil }},
 			mockResultRepo{},
 			mockProcessor{submitCodeFn: func(_ uuid.UUID, _ string) error { return domain.ErrWrongState }},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -279,6 +302,7 @@ func TestService_DeleteSession(t *testing.T) {
 			},
 			mockResultRepo{},
 			mockProcessor{cancelFn: func(_ uuid.UUID) error { cancelled = true; return nil }},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -294,6 +318,7 @@ func TestService_DeleteSession(t *testing.T) {
 			}},
 			mockResultRepo{},
 			mockProcessor{},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -311,6 +336,7 @@ func TestService_DeleteSession(t *testing.T) {
 			},
 			mockResultRepo{},
 			mockProcessor{cancelFn: func(_ uuid.UUID) error { return domain.ErrSessionNotFound }},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -331,6 +357,7 @@ func TestService_DeleteSession(t *testing.T) {
 			},
 			mockResultRepo{},
 			mockProcessor{cancelFn: func(_ uuid.UUID) error { return wantErr }},
+			mockIssuer{},
 			config.Service{},
 		)
 
@@ -382,7 +409,7 @@ func (r *stubRepo) Delete(_ context.Context, id uuid.UUID) error {
 func TestService_CreateSession_ConcurrentDedup(t *testing.T) {
 	ctx := context.Background()
 
-	svc := NewService(newStubRepo(), mockResultRepo{}, mockProcessor{}, config.Service{})
+	svc := NewService(newStubRepo(), mockResultRepo{}, mockProcessor{}, mockIssuer{}, config.Service{})
 
 	var created atomic.Int64
 	const n = 50
@@ -391,7 +418,7 @@ func TestService_CreateSession_ConcurrentDedup(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			if _, c, _ := svc.CreateSession(ctx, "+79991234567"); c {
+			if _, _, c, _ := svc.CreateSession(ctx, "+79991234567"); c {
 				created.Add(1)
 			}
 		}()
