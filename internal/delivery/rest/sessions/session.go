@@ -13,11 +13,11 @@ import (
 var errNoSessionID = errors.New("session id missing from request context")
 
 type SessionInterface interface {
-	CreateSession(context context.Context, phone string) (*domain.Session, string, bool, error)
+	CreateSession(context context.Context, phone string) (*domain.CreateSessionResult, error)
 	DeleteSession(context context.Context, sessionID uuid.UUID) error
 	GetSession(context context.Context, sessionID uuid.UUID) (*domain.Session, error)
 	SubmitCode(context context.Context, sessionID uuid.UUID, code string) (*domain.Session, error)
-	GetSessionResult(context context.Context, sessionID uuid.UUID) (*domain.ExtractedData, error)
+	GetSessionResult(context context.Context, sessionID uuid.UUID) (*domain.EncryptedResult, error)
 }
 
 type SessionHandler struct {
@@ -29,16 +29,16 @@ func NewSessionHandler(service SessionInterface) *SessionHandler {
 }
 
 func (sh SessionHandler) CreateSession(ctx context.Context, request apiv1.CreateSessionRequestObject) (apiv1.CreateSessionResponseObject, error) {
-	session, token, created, err := sh.service.CreateSession(ctx, request.Body.Phone)
+	result, err := sh.service.CreateSession(ctx, request.Body.Phone)
 	if err != nil {
 		return ToCreateErrorResponse(err), nil
 	}
 
-	if !created {
-		return apiv1.CreateSession200JSONResponse(ToDTOsSessionCreated(session, token)), nil
+	if !result.Created {
+		return apiv1.CreateSession200JSONResponse(ToDTOsSessionWithToken(result.Session, result.Token)), nil
 	}
 
-	return apiv1.CreateSession202JSONResponse(ToDTOsSessionCreated(session, token)), nil
+	return apiv1.CreateSession202JSONResponse(ToDTOsSessionCreated(result.Session, result.Token, result.DecryptionKey)), nil
 }
 
 func (sh SessionHandler) DeleteSession(ctx context.Context, _ apiv1.DeleteSessionRequestObject) (apiv1.DeleteSessionResponseObject, error) {

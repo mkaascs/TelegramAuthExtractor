@@ -16,7 +16,11 @@ import (
 type SessionRepository interface {
 	Get(ctx context.Context, sessionID uuid.UUID) (*domain.Session, error)
 	Update(ctx context.Context, session *domain.Session) error
-	Complete(ctx context.Context, session *domain.Session, result *domain.ExtractedData) error
+	Complete(ctx context.Context, session *domain.Session, result *domain.EncryptedResult) error
+}
+
+type Sealer interface {
+	Seal(recipient string, plaintext []byte) (string, error)
 }
 
 type Device interface {
@@ -46,6 +50,7 @@ type Worker struct {
 	device   Device
 	parser   Parser
 	verifier Verifier
+	sealer   Sealer
 
 	log *slog.Logger
 	cfg config.Worker
@@ -55,12 +60,13 @@ type Worker struct {
 	current *waitingTask
 }
 
-func NewWorker(sessions SessionRepository, device Device, parser Parser, verifier Verifier, log *slog.Logger, cfg config.Worker) *Worker {
+func NewWorker(sessions SessionRepository, device Device, parser Parser, verifier Verifier, sealer Sealer, log *slog.Logger, cfg config.Worker) *Worker {
 	return &Worker{
 		sessions: sessions,
 		device:   device,
 		parser:   parser,
 		verifier: verifier,
+		sealer:   sealer,
 		log:      log,
 		cfg:      cfg,
 		queue:    make(chan *domain.Session, cfg.QueueSize),
@@ -172,7 +178,18 @@ func (w *Worker) process(ctx context.Context, session *domain.Session) {
 func (w *Worker) complete(ctx context.Context, session *domain.Session, result *domain.ExtractedData) error {
 	const fn = "services.workers.Worker.complete"
 
-	if err := w.sessions.Complete(ctx, session, result); err != nil {
+	authKeyEncrypted, err := w.sealer.Seal(session.Recipient, result.AuthKey)
+	if err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	encrypted := &domain.EncryptedResult{
+		DCID:             result.DCID,
+		AuthKeyEncrypted: authKeyEncrypted,
+		UserID:           result.UserID,
+	}
+
+	if err := w.sessions.Complete(ctx, session, encrypted); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 

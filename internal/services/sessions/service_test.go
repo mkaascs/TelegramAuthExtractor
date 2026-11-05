@@ -35,10 +35,10 @@ func (m mockRepo) Delete(ctx context.Context, id uuid.UUID) error {
 }
 
 type mockResultRepo struct {
-	getFn func(ctx context.Context, id uuid.UUID) (*domain.ExtractedData, error)
+	getFn func(ctx context.Context, id uuid.UUID) (*domain.EncryptedResult, error)
 }
 
-func (m mockResultRepo) GetBySession(ctx context.Context, id uuid.UUID) (*domain.ExtractedData, error) {
+func (m mockResultRepo) GetBySession(ctx context.Context, id uuid.UUID) (*domain.EncryptedResult, error) {
 	if m.getFn == nil {
 		return nil, nil
 	}
@@ -69,6 +69,17 @@ func (m mockIssuer) Issue(id domain.SessionID) (string, error) {
 	return m.issueFn(id)
 }
 
+type mockKeyGenerator struct {
+	generateFn func() (string, string, error)
+}
+
+func (m mockKeyGenerator) Generate() (string, string, error) {
+	if m.generateFn == nil {
+		return "age1test-recipient", "AGE-SECRET-KEY-1TEST", nil
+	}
+	return m.generateFn()
+}
+
 func TestService_CreateSession(t *testing.T) {
 	ctx := context.Background()
 	const phone = "+79991234567"
@@ -83,13 +94,15 @@ func TestService_CreateSession(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
-		session, _, created, err := svc.CreateSession(ctx, phone)
+		res, err := svc.CreateSession(ctx, phone)
 		require.NoError(t, err)
-		require.True(t, created)
-		require.Equal(t, phone, session.Phone)
+		require.True(t, res.Created)
+		require.Equal(t, phone, res.Session.Phone)
+		require.NotEmpty(t, res.DecryptionKey, "ключ расшифровки выдаётся при создании")
 	})
 
 	t.Run("active exists -> not created", func(t *testing.T) {
@@ -103,13 +116,15 @@ func TestService_CreateSession(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
-		session, _, created, err := svc.CreateSession(ctx, phone)
+		res, err := svc.CreateSession(ctx, phone)
 		require.NoError(t, err)
-		require.False(t, created)
-		require.Equal(t, idOf(existing), idOf(session))
+		require.False(t, res.Created)
+		require.Equal(t, idOf(existing), idOf(res.Session))
+		require.Empty(t, res.DecryptionKey, "на идемпотентном повторе ключ не выдаётся")
 	})
 
 	t.Run("repo error -> propagated", func(t *testing.T) {
@@ -123,10 +138,11 @@ func TestService_CreateSession(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
-		_, _, _, err := svc.CreateSession(ctx, phone)
+		_, err := svc.CreateSession(ctx, phone)
 		require.ErrorIs(t, err, wantErr)
 	})
 }
@@ -141,6 +157,7 @@ func TestService_GetSession(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -157,6 +174,7 @@ func TestService_GetSession(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -171,15 +189,16 @@ func TestService_GetSessionResult(t *testing.T) {
 	t.Run("done -> returns result", func(t *testing.T) {
 		s := domain.NewSession("+79991234567", 0)
 		s.Status = domain.StatusDone
-		result := &domain.ExtractedData{DCID: 2, AuthKey: []byte("key"), UserID: 1153367122}
+		result := &domain.EncryptedResult{DCID: 2, AuthKeyEncrypted: "sealed-key", UserID: 1153367122}
 
 		svc := NewService(
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil }},
-			mockResultRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.ExtractedData, error) {
+			mockResultRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.EncryptedResult, error) {
 				return result, nil
 			}},
 			mockProcessor{},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -198,6 +217,7 @@ func TestService_GetSessionResult(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -211,11 +231,12 @@ func TestService_GetSessionResult(t *testing.T) {
 
 		svc := NewService(
 			mockRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.Session, error) { return s, nil }},
-			mockResultRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.ExtractedData, error) {
+			mockResultRepo{getFn: func(_ context.Context, _ uuid.UUID) (*domain.EncryptedResult, error) {
 				return nil, nil
 			}},
 			mockProcessor{},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -231,6 +252,7 @@ func TestService_GetSessionResult(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -250,6 +272,7 @@ func TestService_SubmitCode(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{submitCodeFn: func(_ uuid.UUID, _ string) error { called = true; return nil }},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -267,6 +290,7 @@ func TestService_SubmitCode(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -281,6 +305,7 @@ func TestService_SubmitCode(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{submitCodeFn: func(_ uuid.UUID, _ string) error { return domain.ErrWrongState }},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -303,6 +328,7 @@ func TestService_DeleteSession(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{cancelFn: func(_ uuid.UUID) error { cancelled = true; return nil }},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -319,6 +345,7 @@ func TestService_DeleteSession(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -337,6 +364,7 @@ func TestService_DeleteSession(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{cancelFn: func(_ uuid.UUID) error { return domain.ErrSessionNotFound }},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -358,6 +386,7 @@ func TestService_DeleteSession(t *testing.T) {
 			mockResultRepo{},
 			mockProcessor{cancelFn: func(_ uuid.UUID) error { return wantErr }},
 			mockIssuer{},
+			mockKeyGenerator{},
 			config.Service{},
 		)
 
@@ -409,7 +438,7 @@ func (r *stubRepo) Delete(_ context.Context, id uuid.UUID) error {
 func TestService_CreateSession_ConcurrentDedup(t *testing.T) {
 	ctx := context.Background()
 
-	svc := NewService(newStubRepo(), mockResultRepo{}, mockProcessor{}, mockIssuer{}, config.Service{})
+	svc := NewService(newStubRepo(), mockResultRepo{}, mockProcessor{}, mockIssuer{}, mockKeyGenerator{}, config.Service{})
 
 	var created atomic.Int64
 	const n = 50
@@ -418,7 +447,7 @@ func TestService_CreateSession_ConcurrentDedup(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			if _, _, c, _ := svc.CreateSession(ctx, "+79991234567"); c {
+			if res, _ := svc.CreateSession(ctx, "+79991234567"); res.Created {
 				created.Add(1)
 			}
 		}()

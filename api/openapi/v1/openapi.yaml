@@ -41,7 +41,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SessionCreated'
+                $ref: '#/components/schemas/SessionWithToken'
         '202':
           description: A new task was created and queued
           content:
@@ -313,7 +313,7 @@ components:
           type: string
           format: date-time
 
-    SessionCreated:
+    SessionWithToken:
       allOf:
         - $ref: '#/components/schemas/Session'
         - type: object
@@ -323,10 +323,24 @@ components:
             session_token:
               type: string
               description: >
-                Per-session capability token (JWT). Returned only on creation;
-                required in the Authorization header for all operations on this
-                session
+                Per-session capability token (JWT). Required in the
+                Authorization header for all operations on this session
               example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    SessionCreated:
+      allOf:
+        - $ref: '#/components/schemas/SessionWithToken'
+        - type: object
+          required:
+            - decryption_key
+          properties:
+            decryption_key:
+              type: string
+              description: >
+                Age private key (X25519) for decrypting the extracted auth_key.
+                Returned only when a new session is created (202), never on an
+                idempotent retry (200); the server does not store it
+              example: AGE-SECRET-KEY-1QQPQ...
 
     ExtractedData:
       type: object
@@ -341,8 +355,14 @@ components:
           example: 2
         auth_key:
           type: string
-          format: byte
-          description: Permanent auth key (256 bytes), base64-encoded
+          description: >
+            Extracted permanent auth key, encrypted to the session recipient and
+            ASCII-armored (age). Decrypt with the decryption_key returned at
+            session creation
+          example: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            ...
+            -----END AGE ENCRYPTED FILE-----
         user_id:
           type: integer
           format: int64

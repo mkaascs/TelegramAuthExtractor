@@ -11,6 +11,7 @@ import (
 	"telegram-auth-extractor/internal/app/server"
 	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/delivery/rest"
+	"telegram-auth-extractor/internal/infra/crypto"
 	"telegram-auth-extractor/internal/infra/device"
 	"telegram-auth-extractor/internal/infra/storage"
 	"telegram-auth-extractor/internal/infra/telegram"
@@ -45,18 +46,21 @@ func NewApp(cfg config.Config, log *slog.Logger) *App {
 	sessionRepo := storage.NewSession(pg.Pool, log)
 	resultRepo := storage.NewResult(pg.Pool, log)
 
+	keys := crypto.NewManager()
+
 	dev := device.NewDevice(cfg.ADB, log)
 	worker := workers.NewWorker(sessionRepo,
 		dev,
 		tgnet.NewParser(),
 		telegram.NewVerifier(cfg.Telegram, log),
+		keys,
 		log, cfg.Service.Worker)
 
 	dispatcher := workers.NewDispatcher(sessionRepo, worker, log, cfg.Service.Dispatcher)
 
 	tokens := token.NewManager(cfg.Auth.JWTSecret)
 
-	svc := sessions.NewService(sessionRepo, resultRepo, worker, tokens, cfg.Service)
+	svc := sessions.NewService(sessionRepo, resultRepo, worker, tokens, keys, cfg.Service)
 	srv := server.NewServer(rest.NewHandler(svc), tokens, cfg, log)
 
 	log.Info("application has been initialized")

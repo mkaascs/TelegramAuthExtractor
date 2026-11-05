@@ -118,7 +118,7 @@ func TestSession_CreateOrGetActive_Idempotency(t *testing.T) {
 	require.False(t, created)
 	require.Equal(t, uuid.UUID(stored.ID), uuid.UUID(got.ID))
 
-	require.NoError(t, repo.Complete(ctx, stored, &domain.ExtractedData{DCID: 2, AuthKey: []byte("k"), UserID: 1}))
+	require.NoError(t, repo.Complete(ctx, stored, &domain.EncryptedResult{DCID: 2, AuthKeyEncrypted: "sealed-k", UserID: 1}))
 
 	_, created, err = repo.CreateOrGetActive(ctx, domain.NewSession(phone, time.Hour))
 	require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestSession_Complete_And_DeleteCascade(t *testing.T) {
 	_, _, err := repo.CreateOrGetActive(ctx, s)
 	require.NoError(t, err)
 
-	require.NoError(t, repo.Complete(ctx, s, &domain.ExtractedData{DCID: 2, AuthKey: []byte("key"), UserID: 7}))
+	require.NoError(t, repo.Complete(ctx, s, &domain.EncryptedResult{DCID: 2, AuthKeyEncrypted: "sealed-key", UserID: 7}))
 
 	done, err := repo.Get(ctx, uuid.UUID(s.ID))
 	require.NoError(t, err)

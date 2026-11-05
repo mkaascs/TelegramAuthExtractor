@@ -17,7 +17,7 @@ type SessionRepository interface {
 }
 
 type ResultRepository interface {
-	GetBySession(ctx context.Context, sessionID uuid.UUID) (*domain.ExtractedData, error)
+	GetBySession(ctx context.Context, sessionID uuid.UUID) (*domain.EncryptedResult, error)
 }
 
 type Processor interface {
@@ -29,34 +29,55 @@ type Issuer interface {
 	Issue(id domain.SessionID) (string, error)
 }
 
+type KeyGenerator interface {
+	Generate() (recipient string, secret string, err error)
+}
+
 type Service struct {
 	sessions  SessionRepository
 	results   ResultRepository
 	processor Processor
 	issuer    Issuer
+	keygen    KeyGenerator
 	cfg       config.Service
 }
 
-func NewService(sessions SessionRepository, results ResultRepository, processor Processor, issuer Issuer, cfg config.Service) *Service {
-	return &Service{sessions: sessions, results: results, processor: processor, issuer: issuer, cfg: cfg}
+func NewService(sessions SessionRepository, results ResultRepository, processor Processor, issuer Issuer, keygen KeyGenerator, cfg config.Service) *Service {
+	return &Service{sessions: sessions, results: results, processor: processor, issuer: issuer, keygen: keygen, cfg: cfg}
 }
 
-func (s *Service) CreateSession(ctx context.Context, phone string) (*domain.Session, string, bool, error) {
+func (s *Service) CreateSession(ctx context.Context, phone string) (*domain.CreateSessionResult, error) {
 	const fn = "services.sessions.Service.CreateSession"
 
 	session := domain.NewSession(phone, s.cfg.SessionTTL)
 
+	recipient, secret, err := s.keygen.Generate()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	session.Recipient = recipient
+
 	stored, created, err := s.sessions.CreateOrGetActive(ctx, session)
 	if err != nil {
-		return nil, "", false, fmt.Errorf("%s: %w", fn, err)
+		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
 	token, err := s.issuer.Issue(stored.ID)
 	if err != nil {
-		return nil, "", false, fmt.Errorf("%s: %w", fn, err)
+		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	return stored, token, created, nil
+	if !created {
+		secret = ""
+	}
+
+	return &domain.CreateSessionResult{
+		Session:       stored,
+		Token:         token,
+		DecryptionKey: secret,
+		Created:       created,
+	}, nil
 }
 
 func (s *Service) DeleteSession(ctx context.Context, sessionID uuid.UUID) error {
@@ -103,7 +124,7 @@ func (s *Service) SubmitCode(ctx context.Context, sessionID uuid.UUID, code stri
 	return session, nil
 }
 
-func (s *Service) GetSessionResult(ctx context.Context, sessionID uuid.UUID) (*domain.ExtractedData, error) {
+func (s *Service) GetSessionResult(ctx context.Context, sessionID uuid.UUID) (*domain.EncryptedResult, error) {
 	const fn = "services.sessions.Service.GetSessionResult"
 
 	session, err := s.sessions.Get(ctx, sessionID)
