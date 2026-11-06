@@ -43,6 +43,7 @@ type Http struct {
 type Service struct {
 	SessionTTL time.Duration `yaml:"session_ttl" env-default:"168h"`
 	Worker     Worker        `yaml:"worker"`
+	Reaper     Reaper        `yaml:"reaper"`
 	Dispatcher Dispatcher    `yaml:"dispatcher"`
 }
 
@@ -50,6 +51,10 @@ type Worker struct {
 	CodeWait       time.Duration `yaml:"code_wait" env-default:"1m"`
 	CleanupTimeout time.Duration `yaml:"cleanup_timeout" env-default:"1m"`
 	QueueSize      int           `yaml:"queue_size" env-default:"20"`
+}
+
+type Reaper struct {
+	Interval time.Duration `yaml:"interval" env-default:"1m"`
 }
 
 type Dispatcher struct {

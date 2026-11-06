@@ -28,6 +28,7 @@ type App struct {
 
 	server     *server.Server
 	worker     *workers.Worker
+	reaper     *workers.Reaper
 	dispatcher *workers.Dispatcher
 	device     *device.Device
 	db         *postgres.DB
@@ -56,6 +57,8 @@ func NewApp(cfg config.Config, log *slog.Logger) *App {
 		keys,
 		log, cfg.Service.Worker)
 
+	reaper := workers.NewReaper(sessionRepo, log, cfg.Service.Reaper)
+
 	dispatcher := workers.NewDispatcher(sessionRepo, worker, log, cfg.Service.Dispatcher)
 
 	tokens := token.NewManager(cfg.Auth.JWTSecret)
@@ -70,6 +73,7 @@ func NewApp(cfg config.Config, log *slog.Logger) *App {
 		log:        log,
 		server:     srv,
 		worker:     worker,
+		reaper:     reaper,
 		dispatcher: dispatcher,
 		device:     dev,
 		db:         pg,
@@ -90,9 +94,10 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	go a.worker.Run(workerCtx)
+	go a.reaper.Run(workerCtx)
 	go a.dispatcher.Run(workerCtx)
 
-	a.log.Info("worker and dispatcher are running",
+	a.log.Info("workers, reaper and dispatcher are running",
 		slog.Int("queue_size", a.cfg.Service.Worker.QueueSize),
 		slog.Int("batch_size", a.cfg.Service.Dispatcher.BatchSize))
 

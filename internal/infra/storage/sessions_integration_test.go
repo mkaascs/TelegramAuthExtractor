@@ -316,3 +316,53 @@ func TestResult_GetBySession_None(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, got, "нет результата -> (nil, nil)")
 }
+
+func TestSession_DeleteExpired(t *testing.T) {
+	resetDB(t)
+	repo := newSessionRepo()
+	ctx := context.Background()
+
+	expired := domain.NewSession("+79990000001", -time.Hour) // expires_at в прошлом
+	_, _, err := repo.CreateOrGetActive(ctx, expired)
+	require.NoError(t, err)
+
+	fresh := domain.NewSession("+79990000002", time.Hour)
+	_, _, err = repo.CreateOrGetActive(ctx, fresh)
+	require.NoError(t, err)
+
+	deleted, err := repo.DeleteExpired(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, deleted, "удаляется только истёкшая сессия")
+
+	_, err = repo.Get(ctx, uuid.UUID(expired.ID))
+	require.ErrorIs(t, err, domain.ErrSessionNotFound, "истёкшая удалена")
+
+	_, err = repo.Get(ctx, uuid.UUID(fresh.ID))
+	require.NoError(t, err, "не истёкшая осталась")
+}
+
+func TestSession_DeleteExpired_None(t *testing.T) {
+	resetDB(t)
+	repo := newSessionRepo()
+
+	deleted, err := repo.DeleteExpired(context.Background())
+	require.NoError(t, err)
+	require.Zero(t, deleted, "нечего удалять")
+}
+
+func TestSession_DeleteExpired_CascadesResults(t *testing.T) {
+	resetDB(t)
+	repo := newSessionRepo()
+	ctx := context.Background()
+
+	s := domain.NewSession("+79990000001", -time.Hour)
+	_, _, err := repo.CreateOrGetActive(ctx, s)
+	require.NoError(t, err)
+	require.NoError(t, repo.Complete(ctx, s, &domain.EncryptedResult{DCID: 1, AuthKeyEncrypted: "x", UserID: 1}))
+	require.Equal(t, 1, resultsCount(t, uuid.UUID(s.ID)))
+
+	deleted, err := repo.DeleteExpired(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, deleted)
+	require.Equal(t, 0, resultsCount(t, uuid.UUID(s.ID)), "результат истёкшей сессии снесён каскадом")
+}
