@@ -3,3 +3,5 @@
 *.env
 coverage.html
 coverage.out
+key.txt
+result.age

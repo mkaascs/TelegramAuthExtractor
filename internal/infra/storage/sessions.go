@@ -12,7 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const sessionColumns = `id, phone, status, error, code_attempts, created_at, expires_at`
+const sessionColumns = `id, phone, status, error, code_attempts, recipient, created_at, expires_at`
 
 type Session struct {
 	pool *pgxpool.Pool
@@ -35,12 +35,12 @@ func (s *Session) CreateOrGetActive(ctx context.Context, session *domain.Session
 
 	var id uuid.UUID
 	err = tx.QueryRow(ctx,
-		`INSERT INTO sessions(id, phone, status, created_at, expires_at)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO sessions(id, phone, status, recipient, created_at, expires_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 ON CONFLICT (phone) WHERE status NOT IN ('done', 'failed') DO NOTHING
 		 RETURNING id`,
 		uuid.UUID(session.ID), session.Phone, string(session.Status),
-		session.CreatedAt, session.ExpiresAt).Scan(&id)
+		session.Recipient, session.CreatedAt, session.ExpiresAt).Scan(&id)
 
 	switch {
 	case err == nil:
@@ -106,7 +106,7 @@ func (s *Session) Update(ctx context.Context, session *domain.Session) error {
 	return nil
 }
 
-func (s *Session) Complete(ctx context.Context, session *domain.Session, result *domain.ExtractedData) error {
+func (s *Session) Complete(ctx context.Context, session *domain.Session, result *domain.EncryptedResult) error {
 	const fn = "infra.storage.Session.Complete"
 
 	tx, err := s.pool.Begin(ctx)
@@ -119,8 +119,8 @@ func (s *Session) Complete(ctx context.Context, session *domain.Session, result 
 	}()
 
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO results(session_id, dc_id, auth_key, user_id) VALUES ($1, $2, $3, $4)`,
-		uuid.UUID(session.ID), result.DCID, result.AuthKey, result.UserID); err != nil {
+		`INSERT INTO results(session_id, dc_id, auth_key_encrypted, user_id) VALUES ($1, $2, $3, $4)`,
+		uuid.UUID(session.ID), result.DCID, result.AuthKeyEncrypted, result.UserID); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
@@ -234,7 +234,7 @@ func scanSession(row rowScanner) (*domain.Session, error) {
 	)
 
 	if err := row.Scan(&id, &session.Phone, &status, &session.Error,
-		&session.CodeAttempts, &session.CreatedAt, &session.ExpiresAt); err != nil {
+		&session.CodeAttempts, &session.Recipient, &session.CreatedAt, &session.ExpiresAt); err != nil {
 		return nil, err
 	}
 

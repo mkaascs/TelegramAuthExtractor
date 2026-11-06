@@ -14,6 +14,7 @@ type Session struct {
 	Status       Status
 	Error        *string
 	CodeAttempts int
+	Recipient    string
 	CreatedAt    time.Time
 	ExpiresAt    time.Time
 }

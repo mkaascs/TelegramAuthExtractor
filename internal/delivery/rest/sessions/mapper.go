@@ -19,8 +19,8 @@ func ToDTOsSession(session *domain.Session) apiv1.Session {
 	}
 }
 
-func ToDTOsSessionCreated(session *domain.Session, token string) apiv1.SessionCreated {
-	return apiv1.SessionCreated{
+func ToDTOsSessionWithToken(session *domain.Session, token string) apiv1.SessionWithToken {
+	return apiv1.SessionWithToken{
 		CreatedAt:    session.CreatedAt,
 		Error:        session.Error,
 		Id:           types.UUID(session.ID),
@@ -31,9 +31,22 @@ func ToDTOsSessionCreated(session *domain.Session, token string) apiv1.SessionCr
 	}
 }
 
-func ToDTOsExtractedData(data *domain.ExtractedData) apiv1.ExtractedData {
+func ToDTOsSessionCreated(session *domain.Session, token, decryptionKey string) apiv1.SessionCreated {
+	return apiv1.SessionCreated{
+		CreatedAt:     session.CreatedAt,
+		Error:         session.Error,
+		Id:            types.UUID(session.ID),
+		Phone:         session.Phone,
+		Status:        apiv1.SessionStatus(session.Status),
+		CodeAttempts:  session.CodeAttempts,
+		SessionToken:  token,
+		DecryptionKey: decryptionKey,
+	}
+}
+
+func ToDTOsExtractedData(data *domain.EncryptedResult) apiv1.ExtractedData {
 	return apiv1.ExtractedData{
-		AuthKey: data.AuthKey,
+		AuthKey: data.AuthKeyEncrypted,
 		DcId:    data.DCID,
 		UserId:  data.UserID,
 	}
