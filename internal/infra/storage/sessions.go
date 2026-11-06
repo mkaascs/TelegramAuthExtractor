@@ -154,6 +154,17 @@ func (s *Session) Delete(ctx context.Context, sessionID uuid.UUID) error {
 	return nil
 }
 
+func (s *Session) DeleteExpired(ctx context.Context) (int, error) {
+	const fn = "infra.storage.Session.DeleteExpired"
+
+	res, err := s.pool.Exec(ctx, `DELETE FROM sessions WHERE expires_at < now()`)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	return int(res.RowsAffected()), nil
+}
+
 func (s *Session) ClaimPending(ctx context.Context, limit int) ([]*domain.Session, error) {
 	const fn = "infra.storage.Session.ClaimPending"
 
