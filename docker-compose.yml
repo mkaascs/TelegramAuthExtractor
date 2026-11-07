@@ -12,6 +12,12 @@ services:
       - /dev/binderfs:/dev/binderfs
     networks:
       - tg-net
+    healthcheck:
+      test: ["CMD", "/system/bin/sh", "-c", "[ \"$(getprop sys.boot_completed)\" = \"1\" ]"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+      start_period: 30s
 
   extractor:
     build:
@@ -19,7 +25,8 @@ services:
       dockerfile: Dockerfile
     container_name: extractor
     depends_on:
-      - redroid
+      redroid:
+        condition: service_healthy
     environment:
       CONFIG_PATH: /config/redroid.yaml
       TELEGRAM_API_ID: ${TELEGRAM_API_ID}
