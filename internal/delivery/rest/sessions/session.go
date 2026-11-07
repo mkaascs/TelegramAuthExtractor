@@ -16,7 +16,7 @@ type SessionInterface interface {
 	CreateSession(context context.Context, phone string) (*domain.CreateSessionResult, error)
 	DeleteSession(context context.Context, sessionID uuid.UUID) error
 	GetSession(context context.Context, sessionID uuid.UUID) (*domain.Session, error)
-	SubmitCode(context context.Context, sessionID uuid.UUID, code string) (*domain.Session, error)
+	SubmitCode(context context.Context, sessionID uuid.UUID, code string) error
 	GetSessionResult(context context.Context, sessionID uuid.UUID) (*domain.EncryptedResult, error)
 }
 
@@ -74,12 +74,11 @@ func (sh SessionHandler) SubmitCode(ctx context.Context, request apiv1.SubmitCod
 		return ToSubmitErrorResponse(errNoSessionID), nil
 	}
 
-	session, err := sh.service.SubmitCode(ctx, uuid.UUID(id), request.Body.Code)
-	if err != nil {
+	if err := sh.service.SubmitCode(ctx, uuid.UUID(id), request.Body.Code); err != nil {
 		return ToSubmitErrorResponse(err), nil
 	}
 
-	return apiv1.SubmitCode202JSONResponse(ToDTOsSession(session)), nil
+	return apiv1.SubmitCode202Response{}, nil
 }
 
 func (sh SessionHandler) GetSessionResult(ctx context.Context, _ apiv1.GetSessionResultRequestObject) (apiv1.GetSessionResultResponseObject, error) {

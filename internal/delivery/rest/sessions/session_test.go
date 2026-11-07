@@ -18,7 +18,7 @@ type mockService struct {
 	createFn    func(ctx context.Context, phone string) (*domain.CreateSessionResult, error)
 	deleteFn    func(ctx context.Context, id uuid.UUID) error
 	getFn       func(ctx context.Context, id uuid.UUID) (*domain.Session, error)
-	submitFn    func(ctx context.Context, id uuid.UUID, code string) (*domain.Session, error)
+	submitFn    func(ctx context.Context, id uuid.UUID, code string) error
 	getResultFn func(ctx context.Context, id uuid.UUID) (*domain.EncryptedResult, error)
 }
 
@@ -34,7 +34,7 @@ func (m mockService) GetSession(ctx context.Context, id uuid.UUID) (*domain.Sess
 	return m.getFn(ctx, id)
 }
 
-func (m mockService) SubmitCode(ctx context.Context, id uuid.UUID, code string) (*domain.Session, error) {
+func (m mockService) SubmitCode(ctx context.Context, id uuid.UUID, code string) error {
 	return m.submitFn(ctx, id, code)
 }
 
@@ -163,9 +163,9 @@ func TestSessionHandler_SubmitCode(t *testing.T) {
 
 	t.Run("accepted -> 202", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
-			submitFn: func(_ context.Context, _ uuid.UUID, c string) (*domain.Session, error) {
+			submitFn: func(_ context.Context, _ uuid.UUID, c string) error {
 				require.Equal(t, code, c)
-				return fakeSession(), nil
+				return nil
 			},
 		})
 
@@ -174,14 +174,14 @@ func TestSessionHandler_SubmitCode(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, ok := resp.(apiv1.SubmitCode202JSONResponse)
+		_, ok := resp.(apiv1.SubmitCode202Response)
 		require.True(t, ok, "expected 202, got %T", resp)
 	})
 
 	t.Run("wrong state -> 409", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
-			submitFn: func(_ context.Context, _ uuid.UUID, _ string) (*domain.Session, error) {
-				return nil, domain.ErrWrongState
+			submitFn: func(_ context.Context, _ uuid.UUID, _ string) error {
+				return domain.ErrWrongState
 			},
 		})
 
@@ -197,8 +197,8 @@ func TestSessionHandler_SubmitCode(t *testing.T) {
 
 	t.Run("not found -> 404", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
-			submitFn: func(_ context.Context, _ uuid.UUID, _ string) (*domain.Session, error) {
-				return nil, domain.ErrSessionNotFound
+			submitFn: func(_ context.Context, _ uuid.UUID, _ string) error {
+				return domain.ErrSessionNotFound
 			},
 		})
 

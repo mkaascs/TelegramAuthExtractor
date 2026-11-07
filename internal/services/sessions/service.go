@@ -109,19 +109,18 @@ func (s *Service) GetSession(ctx context.Context, sessionID uuid.UUID) (*domain.
 	return session, nil
 }
 
-func (s *Service) SubmitCode(ctx context.Context, sessionID uuid.UUID, code string) (*domain.Session, error) {
+func (s *Service) SubmitCode(ctx context.Context, sessionID uuid.UUID, code string) error {
 	const fn = "services.sessions.Service.SubmitCode"
 
-	session, err := s.sessions.Get(ctx, sessionID)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", fn, err)
+	if _, err := s.sessions.Get(ctx, sessionID); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
 	}
 
 	if err := s.processor.SubmitCode(sessionID, code); err != nil {
-		return nil, fmt.Errorf("%s: %w", fn, err)
+		return fmt.Errorf("%s: %w", fn, err)
 	}
 
-	return session, nil
+	return nil
 }
 
 func (s *Service) GetSessionResult(ctx context.Context, sessionID uuid.UUID) (*domain.EncryptedResult, error) {

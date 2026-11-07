@@ -276,9 +276,8 @@ func TestService_SubmitCode(t *testing.T) {
 			config.Service{},
 		)
 
-		got, err := svc.SubmitCode(ctx, idOf(s), "12345")
+		err := svc.SubmitCode(ctx, idOf(s), "12345")
 		require.NoError(t, err)
-		require.Equal(t, idOf(s), idOf(got))
 		require.True(t, called)
 	})
 
@@ -294,7 +293,7 @@ func TestService_SubmitCode(t *testing.T) {
 			config.Service{},
 		)
 
-		_, err := svc.SubmitCode(ctx, uuid.New(), "12345")
+		err := svc.SubmitCode(ctx, uuid.New(), "12345")
 		require.ErrorIs(t, err, domain.ErrSessionNotFound)
 	})
 
@@ -309,7 +308,7 @@ func TestService_SubmitCode(t *testing.T) {
 			config.Service{},
 		)
 
-		_, err := svc.SubmitCode(ctx, idOf(s), "12345")
+		err := svc.SubmitCode(ctx, idOf(s), "12345")
 		require.ErrorIs(t, err, domain.ErrWrongState)
 	})
 }

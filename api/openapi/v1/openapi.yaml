@@ -144,11 +144,10 @@ paths:
               $ref: '#/components/schemas/SubmitCodeRequest'
       responses:
         '202':
-          description: Code accepted, task continues processing
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Session'
+          description: >
+            Code accepted; entry and the rest of the pipeline run
+            asynchronously. No body — poll `GET /sessions/me` for the
+            authoritative state.
         '400':
           description: Malformed request
           content:
