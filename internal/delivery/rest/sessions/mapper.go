@@ -11,6 +11,7 @@ import (
 func ToDTOsSession(session *domain.Session) apiv1.Session {
 	return apiv1.Session{
 		CreatedAt:    session.CreatedAt,
+		ExpiresAt:    session.ExpiresAt,
 		Error:        session.Error,
 		Id:           types.UUID(session.ID),
 		Phone:        session.Phone,

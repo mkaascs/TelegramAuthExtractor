@@ -292,6 +292,7 @@ components:
         - phone
         - status
         - created_at
+        - expires_at
         - code_attempts
       properties:
         id:
@@ -310,6 +311,9 @@ components:
         code_attempts:
           type: integer
         created_at:
+          type: string
+          format: date-time
+        expires_at:
           type: string
           format: date-time
 
