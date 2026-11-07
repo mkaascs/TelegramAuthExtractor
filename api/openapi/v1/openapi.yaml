@@ -235,13 +235,13 @@ components:
 
   responses:
     Unauthorized:
-      description: API key is missing
+      description: API key or session token is missing
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
     Forbidden:
-      description: API key is invalid
+      description: API key or session token is invalid
       content:
         application/json:
           schema:
@@ -354,7 +354,9 @@ components:
       properties:
         dc_id:
           type: integer
-          description: Account home datacenter (resolved via USER_MIGRATE)
+          description: >
+            Datacenter the extracted key belongs to, read from tgnet.dat and
+            confirmed by the verifier
           example: 2
         auth_key:
           type: string

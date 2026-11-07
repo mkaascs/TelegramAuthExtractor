@@ -23,6 +23,7 @@ func ToDTOsSession(session *domain.Session) apiv1.Session {
 func ToDTOsSessionWithToken(session *domain.Session, token string) apiv1.SessionWithToken {
 	return apiv1.SessionWithToken{
 		CreatedAt:    session.CreatedAt,
+		ExpiresAt:    session.ExpiresAt,
 		Error:        session.Error,
 		Id:           types.UUID(session.ID),
 		Phone:        session.Phone,
@@ -35,6 +36,7 @@ func ToDTOsSessionWithToken(session *domain.Session, token string) apiv1.Session
 func ToDTOsSessionCreated(session *domain.Session, token, decryptionKey string) apiv1.SessionCreated {
 	return apiv1.SessionCreated{
 		CreatedAt:     session.CreatedAt,
+		ExpiresAt:     session.ExpiresAt,
 		Error:         session.Error,
 		Id:            types.UUID(session.ID),
 		Phone:         session.Phone,
