@@ -19,10 +19,7 @@ import (
 	"telegram-auth-extractor/internal/domain"
 )
 
-const (
-	dcCount        = 5
-	attemptTimeout = 20 * time.Second
-)
+const attemptTimeout = 20 * time.Second
 
 type Verifier struct {
 	cfg config.Telegram
@@ -51,18 +48,16 @@ func (v *Verifier) Verify(ctx context.Context, keys []domain.DatacenterKey) (*do
 	}
 
 	var wg sync.WaitGroup
-	results := make(chan result, len(keys)*dcCount)
+	results := make(chan result, len(keys))
 
 	for _, key := range keys {
-		for dc := 1; dc <= dcCount; dc++ {
-			wg.Add(1)
-			go func(key domain.DatacenterKey, dc int) {
-				defer wg.Done()
+		wg.Add(1)
+		go func(key domain.DatacenterKey) {
+			defer wg.Done()
 
-				data, err := v.tryKey(ctx, key, dc)
-				results <- result{data, err}
-			}(key, dc)
-		}
+			data, err := v.tryKey(ctx, key)
+			results <- result{data, err}
+		}(key)
 	}
 
 	go func() {
@@ -81,15 +76,15 @@ func (v *Verifier) Verify(ctx context.Context, keys []domain.DatacenterKey) (*do
 	return nil, fmt.Errorf("%s: %w: %d candidates", fn, domain.ErrVerificationFailed, len(keys))
 }
 
-func (v *Verifier) tryKey(ctx context.Context, key domain.DatacenterKey, dc int) (*domain.ExtractedData, error) {
-	storage, err := v.buildSession(ctx, key, dc)
+func (v *Verifier) tryKey(ctx context.Context, key domain.DatacenterKey) (*domain.ExtractedData, error) {
+	storage, err := v.buildSession(ctx, key)
 	if err != nil {
 		return nil, err
 	}
 
 	client := telegram.NewClient(v.cfg.ApiID, v.cfg.ApiHash, telegram.Options{
 		SessionStorage: storage,
-		DC:             dc,
+		DC:             key.DCID,
 		DCList:         v.dcList,
 	})
 
@@ -111,13 +106,13 @@ func (v *Verifier) tryKey(ctx context.Context, key domain.DatacenterKey, dc int)
 		return nil, err
 	}
 
-	return &domain.ExtractedData{DCID: dc, AuthKey: key.AuthKey, UserID: userID}, nil
+	return &domain.ExtractedData{DCID: key.DCID, AuthKey: key.AuthKey, UserID: userID}, nil
 }
 
-func (v *Verifier) buildSession(ctx context.Context, key domain.DatacenterKey, dc int) (*session.StorageMemory, error) {
-	addr, ok := v.dcAddr(dc)
+func (v *Verifier) buildSession(ctx context.Context, key domain.DatacenterKey) (*session.StorageMemory, error) {
+	addr, ok := v.dcAddr(key.DCID)
 	if !ok {
-		return nil, fmt.Errorf("no address for dc %d", dc)
+		return nil, fmt.Errorf("no address for dc %d", key.DCID)
 	}
 
 	var k crypto.Key
@@ -128,7 +123,7 @@ func (v *Verifier) buildSession(ctx context.Context, key domain.DatacenterKey, d
 	loader := session.Loader{Storage: storage}
 
 	if err := loader.Save(ctx, &session.Data{
-		DC:        dc,
+		DC:        key.DCID,
 		Addr:      addr,
 		AuthKey:   authKey.Value[:],
 		AuthKeyID: authKey.ID[:],

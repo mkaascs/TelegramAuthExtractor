@@ -29,10 +29,15 @@ func TestVerifier_ReauthWithExtractedKey(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, authKey, 256)
 
-	v := NewVerifier(config.Telegram{ApiID: parseInt(apiID), ApiHash: apiHash}, discardLogger())
+	dc := 5
+	if raw := os.Getenv("TELEGRAM_DC"); raw != "" {
+		dc = parseInt(raw)
+	}
 
-	result, err := v.Verify(context.Background(), []domain.DatacenterKey{
-		{AuthKey: authKey},
+	verifier := NewVerifier(config.Telegram{ApiID: parseInt(apiID), ApiHash: apiHash}, discardLogger())
+
+	result, err := verifier.Verify(context.Background(), []domain.DatacenterKey{
+		{DCID: dc, AuthKey: authKey},
 	})
 
 	require.NoError(t, err, "re‑auth using the extracted key must be successful")
