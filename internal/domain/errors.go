@@ -14,6 +14,7 @@ var (
 	ErrNoAuthKeys          = errors.New("no auth keys found")
 	ErrVerificationFailed  = errors.New("verification failed")
 	ErrScreenTimeout       = errors.New("screen wait timeout")
+	ErrServiceRestarted    = errors.New("interrupted by service restart")
 )
 
 func PublicErrMessage(err error) string {
@@ -28,6 +29,8 @@ func PublicErrMessage(err error) string {
 		return "failed to verify extracted session"
 	case errors.Is(err, ErrScreenTimeout):
 		return "screen timeout. try again"
+	case errors.Is(err, ErrServiceRestarted):
+		return "session was interrupted by a service restart"
 	default:
 		return "internal error"
 	}

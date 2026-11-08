@@ -17,10 +17,12 @@ import (
 )
 
 type mockRepo struct {
-	mu       sync.Mutex
-	session  *domain.Session
-	getErr   error
-	statuses []domain.Status
+	mu          sync.Mutex
+	session     *domain.Session
+	getErr      error
+	statuses    []domain.Status
+	completed   *domain.EncryptedResult
+	completeErr error
 }
 
 func (m *mockRepo) Get(_ context.Context, _ uuid.UUID) (*domain.Session, error) {
@@ -35,6 +37,24 @@ func (m *mockRepo) Update(_ context.Context, s *domain.Session) error {
 	defer m.mu.Unlock()
 	m.statuses = append(m.statuses, s.Status)
 	return nil
+}
+
+func (m *mockRepo) Complete(_ context.Context, s *domain.Session, result *domain.EncryptedResult) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.completeErr != nil {
+		return m.completeErr
+	}
+	m.completed = result
+	s.Status = domain.StatusDone
+	m.statuses = append(m.statuses, domain.StatusDone)
+	return nil
+}
+
+func (m *mockRepo) completedResult() *domain.EncryptedResult {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.completed
 }
 
 func (m *mockRepo) snapshot() []domain.Status {
@@ -160,8 +180,14 @@ func cancelWhenReady(t *testing.T, w *Worker, id uuid.UUID) {
 	}
 }
 
+type mockSealer struct{}
+
+func (mockSealer) Seal(_ string, plaintext []byte) (string, error) {
+	return "sealed(" + string(plaintext) + ")", nil
+}
+
 func TestWorker_Process_HappyPath(t *testing.T) {
-	session := domain.NewSession("+79991234567")
+	session := domain.NewSession("+79991234567", 0)
 	id := uuid.UUID(session.ID)
 	result := &domain.ExtractedData{DCID: 2, AuthKey: []byte("key"), UserID: 1153367122}
 
@@ -170,7 +196,7 @@ func TestWorker_Process_HappyPath(t *testing.T) {
 	w := NewWorker(repo, device,
 		mockParser{keys: []domain.DatacenterKey{{DCID: 2}}},
 		mockVerifier{result: result},
-		discardLogger(), testCfg())
+		mockSealer{}, discardLogger(), testCfg())
 
 	done := make(chan struct{})
 	go func() { w.process(context.Background(), session); close(done) }()
@@ -189,19 +215,23 @@ func TestWorker_Process_HappyPath(t *testing.T) {
 
 	require.Equal(t, []string{"prepare", "phone", "code", "file", "clear"}, device.snapshot())
 	require.Equal(t, domain.StatusDone, session.Status)
-	require.Equal(t, result, session.Result)
+	require.Equal(t, &domain.EncryptedResult{
+		DCID:             2,
+		AuthKeyEncrypted: "sealed(key)",
+		UserID:           1153367122,
+	}, repo.completedResult())
 	require.Nil(t, session.Error)
 }
 
 func TestWorker_Process_CodeTimeout(t *testing.T) {
-	session := domain.NewSession("+79991234567")
+	session := domain.NewSession("+79991234567", 0)
 
 	cfg := testCfg()
 	cfg.CodeWait = 50 * time.Millisecond
 
 	repo := &mockRepo{session: session}
 	device := &mockDevice{}
-	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, discardLogger(), cfg)
+	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, mockSealer{}, discardLogger(), cfg)
 
 	w.process(context.Background(), session)
 
@@ -218,12 +248,12 @@ func TestWorker_Process_CodeTimeout(t *testing.T) {
 }
 
 func TestWorker_Process_Cancelled(t *testing.T) {
-	session := domain.NewSession("+79991234567")
+	session := domain.NewSession("+79991234567", 0)
 	id := uuid.UUID(session.ID)
 
 	repo := &mockRepo{session: session}
 	device := &mockDevice{}
-	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, discardLogger(), testCfg())
+	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, mockSealer{}, discardLogger(), testCfg())
 
 	done := make(chan struct{})
 	go func() { w.process(context.Background(), session); close(done) }()
@@ -238,11 +268,11 @@ func TestWorker_Process_Cancelled(t *testing.T) {
 }
 
 func TestWorker_Process_DeviceError(t *testing.T) {
-	session := domain.NewSession("+79991234567")
+	session := domain.NewSession("+79991234567", 0)
 
 	repo := &mockRepo{session: session}
 	device := &mockDevice{phoneErr: errors.New("adb: no device")}
-	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, discardLogger(), testCfg())
+	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, mockSealer{}, discardLogger(), testCfg())
 
 	w.process(context.Background(), session)
 
@@ -252,7 +282,7 @@ func TestWorker_Process_DeviceError(t *testing.T) {
 }
 
 func TestWorker_Process_ParserError(t *testing.T) {
-	session := domain.NewSession("+79991234567")
+	session := domain.NewSession("+79991234567", 0)
 	id := uuid.UUID(session.ID)
 
 	repo := &mockRepo{session: session}
@@ -260,7 +290,7 @@ func TestWorker_Process_ParserError(t *testing.T) {
 	w := NewWorker(repo, device,
 		mockParser{err: errors.New("bad tgnet format")},
 		mockVerifier{},
-		discardLogger(), testCfg())
+		mockSealer{}, discardLogger(), testCfg())
 
 	done := make(chan struct{})
 	go func() { w.process(context.Background(), session); close(done) }()
@@ -270,16 +300,16 @@ func TestWorker_Process_ParserError(t *testing.T) {
 
 	require.Equal(t, domain.StatusFailed, session.Status)
 	require.NotNil(t, session.Error)
-	require.Nil(t, session.Result)
+	require.Nil(t, repo.completedResult())
 	require.Contains(t, device.snapshot(), "clear") // cleanup всё равно
 }
 
 func TestWorker_Process_DeletedWhileQueued(t *testing.T) {
-	session := domain.NewSession("+79991234567")
+	session := domain.NewSession("+79991234567", 0)
 
 	repo := &mockRepo{getErr: domain.ErrSessionNotFound}
 	device := &mockDevice{}
-	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, discardLogger(), testCfg())
+	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, mockSealer{}, discardLogger(), testCfg())
 
 	w.process(context.Background(), session)
 
@@ -288,13 +318,13 @@ func TestWorker_Process_DeletedWhileQueued(t *testing.T) {
 }
 
 func TestWorker_SubmitCode_Idle(t *testing.T) {
-	w := NewWorker(&mockRepo{}, &mockDevice{}, mockParser{}, mockVerifier{}, discardLogger(), testCfg())
+	w := NewWorker(&mockRepo{}, &mockDevice{}, mockParser{}, mockVerifier{}, mockSealer{}, discardLogger(), testCfg())
 	err := w.SubmitCode(uuid.New(), "12345")
 	require.ErrorIs(t, err, domain.ErrWrongState)
 }
 
 func TestWorker_Cancel_Idle(t *testing.T) {
-	w := NewWorker(&mockRepo{}, &mockDevice{}, mockParser{}, mockVerifier{}, discardLogger(), testCfg())
+	w := NewWorker(&mockRepo{}, &mockDevice{}, mockParser{}, mockVerifier{}, mockSealer{}, discardLogger(), testCfg())
 	err := w.Cancel(uuid.New())
 	require.ErrorIs(t, err, domain.ErrSessionNotFound)
 }

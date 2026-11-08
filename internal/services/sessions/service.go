@@ -4,57 +4,80 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
+	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/domain"
 
 	"github.com/google/uuid"
 )
 
-type Repository interface {
-	Create(ctx context.Context, session *domain.Session) error
+type SessionRepository interface {
+	CreateOrGetActive(ctx context.Context, session *domain.Session) (*domain.Session, bool, error)
 	Get(ctx context.Context, sessionID uuid.UUID) (*domain.Session, error)
-	FindActiveByPhone(ctx context.Context, phone string) (*domain.Session, error)
 	Delete(ctx context.Context, sessionID uuid.UUID) error
 }
 
+type ResultRepository interface {
+	GetBySession(ctx context.Context, sessionID uuid.UUID) (*domain.EncryptedResult, error)
+}
+
 type Processor interface {
-	Enqueue(session *domain.Session)
 	SubmitCode(sessionID uuid.UUID, code string) error
 	Cancel(sessionID uuid.UUID) error
 }
 
+type Issuer interface {
+	Issue(id domain.SessionID) (string, error)
+}
+
+type KeyGenerator interface {
+	Generate() (recipient string, secret string, err error)
+}
+
 type Service struct {
-	sessions  Repository
+	sessions  SessionRepository
+	results   ResultRepository
 	processor Processor
-	createMx  sync.Mutex
+	issuer    Issuer
+	keygen    KeyGenerator
+	cfg       config.Service
 }
 
-func NewService(sessions Repository, processor Processor) *Service {
-	return &Service{sessions: sessions, processor: processor}
+func NewService(sessions SessionRepository, results ResultRepository, processor Processor, issuer Issuer, keygen KeyGenerator, cfg config.Service) *Service {
+	return &Service{sessions: sessions, results: results, processor: processor, issuer: issuer, keygen: keygen, cfg: cfg}
 }
 
-func (s *Service) CreateSession(ctx context.Context, phone string) (*domain.Session, bool, error) {
+func (s *Service) CreateSession(ctx context.Context, phone string) (*domain.CreateSessionResult, error) {
 	const fn = "services.sessions.Service.CreateSession"
 
-	s.createMx.Lock()
-	defer s.createMx.Unlock()
+	session := domain.NewSession(phone, s.cfg.SessionTTL)
 
-	existing, err := s.sessions.FindActiveByPhone(ctx, phone)
+	recipient, secret, err := s.keygen.Generate()
 	if err != nil {
-		return nil, false, fmt.Errorf("%s: %w", fn, err)
+		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	if existing != nil {
-		return existing, false, nil
+	session.Recipient = recipient
+
+	stored, created, err := s.sessions.CreateOrGetActive(ctx, session)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	session := domain.NewSession(phone)
-	if err := s.sessions.Create(ctx, session); err != nil {
-		return nil, false, fmt.Errorf("%s: %w", fn, err)
+	token, err := s.issuer.Issue(stored.ID)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	s.processor.Enqueue(session)
-	return session, true, nil
+	if !created {
+		secret = ""
+	}
+
+	return &domain.CreateSessionResult{
+		Session:       stored,
+		Token:         token,
+		DecryptionKey: secret,
+		Created:       created,
+	}, nil
 }
 
 func (s *Service) DeleteSession(ctx context.Context, sessionID uuid.UUID) error {
@@ -86,22 +109,21 @@ func (s *Service) GetSession(ctx context.Context, sessionID uuid.UUID) (*domain.
 	return session, nil
 }
 
-func (s *Service) SubmitCode(ctx context.Context, sessionID uuid.UUID, code string) (*domain.Session, error) {
+func (s *Service) SubmitCode(ctx context.Context, sessionID uuid.UUID, code string) error {
 	const fn = "services.sessions.Service.SubmitCode"
 
-	session, err := s.sessions.Get(ctx, sessionID)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", fn, err)
+	if _, err := s.sessions.Get(ctx, sessionID); err != nil {
+		return fmt.Errorf("%s: %w", fn, err)
 	}
 
 	if err := s.processor.SubmitCode(sessionID, code); err != nil {
-		return nil, fmt.Errorf("%s: %w", fn, err)
+		return fmt.Errorf("%s: %w", fn, err)
 	}
 
-	return session, nil
+	return nil
 }
 
-func (s *Service) GetSessionResult(ctx context.Context, sessionID uuid.UUID) (*domain.ExtractedData, error) {
+func (s *Service) GetSessionResult(ctx context.Context, sessionID uuid.UUID) (*domain.EncryptedResult, error) {
 	const fn = "services.sessions.Service.GetSessionResult"
 
 	session, err := s.sessions.Get(ctx, sessionID)
@@ -109,9 +131,18 @@ func (s *Service) GetSessionResult(ctx context.Context, sessionID uuid.UUID) (*d
 		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	if session.Status != domain.StatusDone || session.Result == nil {
+	if session.Status != domain.StatusDone {
 		return nil, fmt.Errorf("%s: %w", fn, domain.ErrWrongState)
 	}
 
-	return session.Result, nil
+	result, err := s.results.GetBySession(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("%s: %w", fn, domain.ErrWrongState)
+	}
+
+	return result, nil
 }

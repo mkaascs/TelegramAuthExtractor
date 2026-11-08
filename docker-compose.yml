@@ -10,8 +10,34 @@ services:
     volumes:
       - redroid-data:/data
       - /dev/binderfs:/dev/binderfs
+    ports:
+      - "127.0.0.1:5555:5555"
     networks:
       - tg-net
+    healthcheck:
+      test: ["CMD", "/system/bin/sh", "-c", "[ \"$(getprop sys.boot_completed)\" = \"1\" ]"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+      start_period: 30s
+
+  postgres:
+    image: postgres:18-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DBNAME}
+      POSTGRES_USER: ${POSTGRES_USERNAME}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    networks:
+      - tg-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USERNAME} -d ${POSTGRES_DBNAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   extractor:
     build:
@@ -19,11 +45,13 @@ services:
       dockerfile: Dockerfile
     container_name: extractor
     depends_on:
-      - redroid
+      redroid:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file: .env
     environment:
       CONFIG_PATH: /config/redroid.yaml
-      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
-      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
     ports:
       - "8080:8080"
     networks:
@@ -32,6 +60,7 @@ services:
 
 volumes:
   redroid-data:
+  pg-data:
 
 networks:
   tg-net:

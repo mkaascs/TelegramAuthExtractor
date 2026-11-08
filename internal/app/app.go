@@ -7,13 +7,16 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"telegram-auth-extractor/internal/app/postgres"
 	"telegram-auth-extractor/internal/app/server"
 	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/delivery/rest"
+	"telegram-auth-extractor/internal/infra/crypto"
 	"telegram-auth-extractor/internal/infra/device"
 	"telegram-auth-extractor/internal/infra/storage"
 	"telegram-auth-extractor/internal/infra/telegram"
 	"telegram-auth-extractor/internal/infra/tgnet"
+	"telegram-auth-extractor/internal/infra/token"
 	"telegram-auth-extractor/internal/lib/logging/sloglib"
 	"telegram-auth-extractor/internal/services/sessions"
 	"telegram-auth-extractor/internal/services/workers"
@@ -23,34 +26,57 @@ type App struct {
 	cfg config.Config
 	log *slog.Logger
 
-	server *server.Server
-	worker *workers.Worker
-	device *device.Device
+	server     *server.Server
+	worker     *workers.Worker
+	reaper     *workers.Reaper
+	dispatcher *workers.Dispatcher
+	device     *device.Device
+	db         *postgres.DB
 
-	cancelWorker context.CancelFunc
+	cancelWorkers context.CancelFunc
 }
 
 func NewApp(cfg config.Config, log *slog.Logger) *App {
-	repo := storage.NewMemoryRepository()
+	pg, err := postgres.NewDB(cfg.Postgres, log)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	pg.MustConnect()
+
+	sessionRepo := storage.NewSession(pg.Pool, log)
+	resultRepo := storage.NewResult(pg.Pool, log)
+
+	keys := crypto.NewManager()
 
 	dev := device.NewDevice(cfg.ADB, log)
-	worker := workers.NewWorker(repo,
+	worker := workers.NewWorker(sessionRepo,
 		dev,
 		tgnet.NewParser(),
 		telegram.NewVerifier(cfg.Telegram, log),
-		log, cfg.Worker)
+		keys,
+		log, cfg.Service.Worker)
 
-	svc := sessions.NewService(repo, worker)
-	srv := server.NewServer(rest.NewHandler(svc), cfg, log)
+	reaper := workers.NewReaper(sessionRepo, log, cfg.Service.Reaper)
+
+	dispatcher := workers.NewDispatcher(sessionRepo, worker, log, cfg.Service.Dispatcher)
+
+	tokens := token.NewManager(cfg.Auth.JWTSecret)
+
+	svc := sessions.NewService(sessionRepo, resultRepo, worker, tokens, keys, cfg.Service)
+	srv := server.NewServer(rest.NewHandler(svc), tokens, cfg, log)
 
 	log.Info("application has been initialized")
 
 	return &App{
-		cfg:    cfg,
-		log:    log,
-		server: srv,
-		worker: worker,
-		device: dev,
+		cfg:        cfg,
+		log:        log,
+		server:     srv,
+		worker:     worker,
+		reaper:     reaper,
+		dispatcher: dispatcher,
+		device:     dev,
+		db:         pg,
 	}
 }
 
@@ -60,10 +86,20 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	workerCtx, cancel := context.WithCancel(context.Background())
-	a.cancelWorker = cancel
+	a.cancelWorkers = cancel
+
+	if err := a.dispatcher.Recover(workerCtx); err != nil {
+		cancel()
+		return fmt.Errorf("recover sessions: %w", err)
+	}
 
 	go a.worker.Run(workerCtx)
-	a.log.Info("worker is running", slog.Int("queue_size", a.cfg.Worker.QueueSize))
+	go a.reaper.Run(workerCtx)
+	go a.dispatcher.Run(workerCtx)
+
+	a.log.Info("workers, reaper and dispatcher are running",
+		slog.Int("queue_size", a.cfg.Service.Worker.QueueSize),
+		slog.Int("batch_size", a.cfg.Service.Dispatcher.BatchSize))
 
 	a.log.Info("http server is running", slog.Int("port", int(a.cfg.Http.Port)))
 	return a.server.Run()
@@ -77,11 +113,20 @@ func (a *App) MustRun(ctx context.Context) {
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
-	a.log.Info("worker is stopping")
-	if a.cancelWorker != nil {
-		a.cancelWorker()
+	a.log.Info("worker and dispatcher are stopping")
+	if a.cancelWorkers != nil {
+		a.cancelWorkers()
 	}
 
 	a.log.Info("http server is stopping")
-	return a.server.Shutdown(ctx)
+	if err := a.server.Shutdown(ctx); err != nil {
+		return err
+	}
+
+	if a.db != nil {
+		a.log.Info("database pool is closing")
+		a.db.Close()
+	}
+
+	return nil
 }

@@ -10,18 +10,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	apiv1 "telegram-auth-extractor/gen/rest/v1"
+	"telegram-auth-extractor/internal/delivery/rest/middlewares"
 	"telegram-auth-extractor/internal/domain"
 )
 
 type mockService struct {
-	createFn    func(ctx context.Context, phone string) (*domain.Session, bool, error)
+	createFn    func(ctx context.Context, phone string) (*domain.CreateSessionResult, error)
 	deleteFn    func(ctx context.Context, id uuid.UUID) error
 	getFn       func(ctx context.Context, id uuid.UUID) (*domain.Session, error)
-	submitFn    func(ctx context.Context, id uuid.UUID, code string) (*domain.Session, error)
-	getResultFn func(ctx context.Context, id uuid.UUID) (*domain.ExtractedData, error)
+	submitFn    func(ctx context.Context, id uuid.UUID, code string) error
+	getResultFn func(ctx context.Context, id uuid.UUID) (*domain.EncryptedResult, error)
 }
 
-func (m mockService) CreateSession(ctx context.Context, phone string) (*domain.Session, bool, error) {
+func (m mockService) CreateSession(ctx context.Context, phone string) (*domain.CreateSessionResult, error) {
 	return m.createFn(ctx, phone)
 }
 
@@ -33,11 +34,11 @@ func (m mockService) GetSession(ctx context.Context, id uuid.UUID) (*domain.Sess
 	return m.getFn(ctx, id)
 }
 
-func (m mockService) SubmitCode(ctx context.Context, id uuid.UUID, code string) (*domain.Session, error) {
+func (m mockService) SubmitCode(ctx context.Context, id uuid.UUID, code string) error {
 	return m.submitFn(ctx, id, code)
 }
 
-func (m mockService) GetSessionResult(ctx context.Context, id uuid.UUID) (*domain.ExtractedData, error) {
+func (m mockService) GetSessionResult(ctx context.Context, id uuid.UUID) (*domain.EncryptedResult, error) {
 	return m.getResultFn(ctx, id)
 }
 
@@ -57,9 +58,14 @@ func TestSessionHandler_CreateSession(t *testing.T) {
 	t.Run("created -> 202", func(t *testing.T) {
 		sess := fakeSession()
 		h := NewSessionHandler(mockService{
-			createFn: func(_ context.Context, p string) (*domain.Session, bool, error) {
+			createFn: func(_ context.Context, p string) (*domain.CreateSessionResult, error) {
 				require.Equal(t, phone, p)
-				return sess, true, nil
+				return &domain.CreateSessionResult{
+					Session:       sess,
+					Token:         "test-token",
+					DecryptionKey: "test-decryption-key",
+					Created:       true,
+				}, nil
 			},
 		})
 
@@ -71,12 +77,17 @@ func TestSessionHandler_CreateSession(t *testing.T) {
 		got, ok := resp.(apiv1.CreateSession202JSONResponse)
 		require.True(t, ok, "expected 202, got %T", resp)
 		require.Equal(t, sess.Phone, got.Phone)
+		require.Equal(t, "test-decryption-key", got.DecryptionKey)
 	})
 
 	t.Run("idempotent (created=false) -> 200", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
-			createFn: func(_ context.Context, _ string) (*domain.Session, bool, error) {
-				return fakeSession(), false, nil
+			createFn: func(_ context.Context, _ string) (*domain.CreateSessionResult, error) {
+				return &domain.CreateSessionResult{
+					Session: fakeSession(),
+					Token:   "test-token",
+					Created: false,
+				}, nil
 			},
 		})
 
@@ -91,8 +102,8 @@ func TestSessionHandler_CreateSession(t *testing.T) {
 
 	t.Run("service error -> 500", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
-			createFn: func(_ context.Context, _ string) (*domain.Session, bool, error) {
-				return nil, false, errors.New("boom")
+			createFn: func(_ context.Context, _ string) (*domain.CreateSessionResult, error) {
+				return nil, errors.New("boom")
 			},
 		})
 
@@ -109,8 +120,8 @@ func TestSessionHandler_CreateSession(t *testing.T) {
 }
 
 func TestSessionHandler_GetSession(t *testing.T) {
-	ctx := context.Background()
 	id := uuid.New()
+	ctx := middlewares.WithSessionID(context.Background(), domain.SessionID(id))
 
 	t.Run("found -> 200", func(t *testing.T) {
 		sess := fakeSession()
@@ -122,7 +133,7 @@ func TestSessionHandler_GetSession(t *testing.T) {
 			},
 		})
 
-		resp, err := h.GetSession(ctx, apiv1.GetSessionRequestObject{Id: id})
+		resp, err := h.GetSession(ctx, apiv1.GetSessionRequestObject{})
 		require.NoError(t, err)
 
 		_, ok := resp.(apiv1.GetSession200JSONResponse)
@@ -136,7 +147,7 @@ func TestSessionHandler_GetSession(t *testing.T) {
 			},
 		})
 
-		resp, err := h.GetSession(ctx, apiv1.GetSessionRequestObject{Id: id})
+		resp, err := h.GetSession(ctx, apiv1.GetSessionRequestObject{})
 		require.NoError(t, err)
 
 		got, ok := resp.(apiv1.GetSession404JSONResponse)
@@ -146,37 +157,35 @@ func TestSessionHandler_GetSession(t *testing.T) {
 }
 
 func TestSessionHandler_SubmitCode(t *testing.T) {
-	ctx := context.Background()
 	id := uuid.New()
+	ctx := middlewares.WithSessionID(context.Background(), domain.SessionID(id))
 	const code = "12345"
 
 	t.Run("accepted -> 202", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
-			submitFn: func(_ context.Context, _ uuid.UUID, c string) (*domain.Session, error) {
+			submitFn: func(_ context.Context, _ uuid.UUID, c string) error {
 				require.Equal(t, code, c)
-				return fakeSession(), nil
+				return nil
 			},
 		})
 
 		resp, err := h.SubmitCode(ctx, apiv1.SubmitCodeRequestObject{
-			Id:   id,
 			Body: &apiv1.SubmitCodeRequest{Code: code},
 		})
 		require.NoError(t, err)
 
-		_, ok := resp.(apiv1.SubmitCode202JSONResponse)
+		_, ok := resp.(apiv1.SubmitCode202Response)
 		require.True(t, ok, "expected 202, got %T", resp)
 	})
 
 	t.Run("wrong state -> 409", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
-			submitFn: func(_ context.Context, _ uuid.UUID, _ string) (*domain.Session, error) {
-				return nil, domain.ErrWrongState
+			submitFn: func(_ context.Context, _ uuid.UUID, _ string) error {
+				return domain.ErrWrongState
 			},
 		})
 
 		resp, err := h.SubmitCode(ctx, apiv1.SubmitCodeRequestObject{
-			Id:   id,
 			Body: &apiv1.SubmitCodeRequest{Code: code},
 		})
 		require.NoError(t, err)
@@ -188,13 +197,12 @@ func TestSessionHandler_SubmitCode(t *testing.T) {
 
 	t.Run("not found -> 404", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
-			submitFn: func(_ context.Context, _ uuid.UUID, _ string) (*domain.Session, error) {
-				return nil, domain.ErrSessionNotFound
+			submitFn: func(_ context.Context, _ uuid.UUID, _ string) error {
+				return domain.ErrSessionNotFound
 			},
 		})
 
 		resp, err := h.SubmitCode(ctx, apiv1.SubmitCodeRequestObject{
-			Id:   id,
 			Body: &apiv1.SubmitCodeRequest{Code: code},
 		})
 		require.NoError(t, err)
@@ -205,39 +213,39 @@ func TestSessionHandler_SubmitCode(t *testing.T) {
 }
 
 func TestSessionHandler_GetSessionResult(t *testing.T) {
-	ctx := context.Background()
 	id := uuid.New()
+	ctx := middlewares.WithSessionID(context.Background(), domain.SessionID(id))
 
 	t.Run("done -> 200 with data", func(t *testing.T) {
-		data := &domain.ExtractedData{
-			DCID:    2,
-			AuthKey: []byte("256-bytes-of-secret-in-reality"),
-			UserID:  1153367122,
+		data := &domain.EncryptedResult{
+			DCID:             2,
+			AuthKeyEncrypted: "-----BEGIN AGE ENCRYPTED FILE-----...",
+			UserID:           1153367122,
 		}
 		h := NewSessionHandler(mockService{
-			getResultFn: func(_ context.Context, _ uuid.UUID) (*domain.ExtractedData, error) {
+			getResultFn: func(_ context.Context, _ uuid.UUID) (*domain.EncryptedResult, error) {
 				return data, nil
 			},
 		})
 
-		resp, err := h.GetSessionResult(ctx, apiv1.GetSessionResultRequestObject{Id: id})
+		resp, err := h.GetSessionResult(ctx, apiv1.GetSessionResultRequestObject{})
 		require.NoError(t, err)
 
 		got, ok := resp.(apiv1.GetSessionResult200JSONResponse)
 		require.True(t, ok, "expected 200, got %T", resp)
 		require.Equal(t, 2, got.DcId)
 		require.Equal(t, int64(1153367122), got.UserId)
-		require.Equal(t, data.AuthKey, got.AuthKey)
+		require.Equal(t, data.AuthKeyEncrypted, got.AuthKey)
 	})
 
 	t.Run("not ready -> 409", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
-			getResultFn: func(_ context.Context, _ uuid.UUID) (*domain.ExtractedData, error) {
+			getResultFn: func(_ context.Context, _ uuid.UUID) (*domain.EncryptedResult, error) {
 				return nil, domain.ErrWrongState
 			},
 		})
 
-		resp, err := h.GetSessionResult(ctx, apiv1.GetSessionResultRequestObject{Id: id})
+		resp, err := h.GetSessionResult(ctx, apiv1.GetSessionResultRequestObject{})
 		require.NoError(t, err)
 
 		got, ok := resp.(apiv1.GetSessionResult409JSONResponse)
@@ -247,12 +255,12 @@ func TestSessionHandler_GetSessionResult(t *testing.T) {
 
 	t.Run("not found -> 404", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
-			getResultFn: func(_ context.Context, _ uuid.UUID) (*domain.ExtractedData, error) {
+			getResultFn: func(_ context.Context, _ uuid.UUID) (*domain.EncryptedResult, error) {
 				return nil, domain.ErrSessionNotFound
 			},
 		})
 
-		resp, err := h.GetSessionResult(ctx, apiv1.GetSessionResultRequestObject{Id: id})
+		resp, err := h.GetSessionResult(ctx, apiv1.GetSessionResultRequestObject{})
 		require.NoError(t, err)
 
 		_, ok := resp.(apiv1.GetSessionResult404JSONResponse)
@@ -261,15 +269,15 @@ func TestSessionHandler_GetSessionResult(t *testing.T) {
 }
 
 func TestSessionHandler_DeleteSession(t *testing.T) {
-	ctx := context.Background()
 	id := uuid.New()
+	ctx := middlewares.WithSessionID(context.Background(), domain.SessionID(id))
 
 	t.Run("deleted -> 204", func(t *testing.T) {
 		h := NewSessionHandler(mockService{
 			deleteFn: func(_ context.Context, _ uuid.UUID) error { return nil },
 		})
 
-		resp, err := h.DeleteSession(ctx, apiv1.DeleteSessionRequestObject{Id: id})
+		resp, err := h.DeleteSession(ctx, apiv1.DeleteSessionRequestObject{})
 		require.NoError(t, err)
 
 		_, ok := resp.(apiv1.DeleteSession204Response)
@@ -281,7 +289,7 @@ func TestSessionHandler_DeleteSession(t *testing.T) {
 			deleteFn: func(_ context.Context, _ uuid.UUID) error { return domain.ErrSessionNotFound },
 		})
 
-		resp, err := h.DeleteSession(ctx, apiv1.DeleteSessionRequestObject{Id: id})
+		resp, err := h.DeleteSession(ctx, apiv1.DeleteSessionRequestObject{})
 		require.NoError(t, err)
 
 		got, ok := resp.(apiv1.DeleteSession404JSONResponse)

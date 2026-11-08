@@ -4,6 +4,7 @@ type Status string
 
 const (
 	StatusPending        Status = "pending"
+	StatusQueued         Status = "queued"
 	StatusLoggingIn      Status = "logging_in"
 	StatusWaitingForCode Status = "waiting_for_code"
 	StatusEnteringCode   Status = "entering_code"

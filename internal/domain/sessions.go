@@ -12,14 +12,14 @@ type Session struct {
 	ID           SessionID
 	Phone        string
 	Status       Status
-	Result       *ExtractedData
 	Error        *string
 	CodeAttempts int
+	Recipient    string
 	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ExpiresAt    time.Time
 }
 
-func NewSession(phone string) *Session {
+func NewSession(phone string, ttl time.Duration) *Session {
 	id, _ := uuid.NewV7()
 	now := time.Now()
 
@@ -28,6 +28,6 @@ func NewSession(phone string) *Session {
 		Phone:     phone,
 		Status:    StatusPending,
 		CreatedAt: now,
-		UpdatedAt: now,
+		ExpiresAt: now.Add(ttl),
 	}
 }

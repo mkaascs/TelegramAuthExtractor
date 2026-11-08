@@ -19,6 +19,10 @@ tasks:
     dotenv: [".env"]
     cmds:
       - go test -tags=integration -count=1 -v -run TestVerifier_ReauthWithExtractedKey ./internal/infra/telegram/
+  test:integration:
+    desc: "Storage integration tests against a throwaway Postgres (needs Docker)"
+    cmds:
+      - go test -tags=integration -count=1 -v ./internal/infra/storage/
   generate:api:
     desc: "Generate openapi code"
     cmds:
@@ -26,6 +30,14 @@ tasks:
   lint:
     desc: "Run linter"
     cmds:
+      - golangci-lint run ./...
+  ci:
+    desc: "Reproduce the GitHub Actions CI locally"
+    cmds:
+      - go generate ./...
+      - go build ./...
+      - go vet ./...
+      - go test -race -count=1 ./...
       - golangci-lint run ./...
   run:
     desc: "Run the service locally"
