@@ -30,6 +30,14 @@ func codeErrorScreen() Matcher {
 	return ByTextContains("wrong code")
 }
 
+func phoneInvalidScreen() Matcher {
+	return ByTextContains("Invalid phone number")
+}
+
+func passwordScreen() Matcher {
+	return ByTextContains("Two-Step Verification")
+}
+
 func successScreen() Matcher {
 	return Or(ByText("Search Chats"), ByTextContains("unread chats"))
 }
@@ -219,8 +227,17 @@ func (d *Device) submitPhone(ctx context.Context, phone string) error {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
-	if _, err := d.waitOneTimeout(ctx, codeScreen(), d.cfg.WaitTimeout); err != nil {
+	key, _, err := d.waitScreenTimeout(ctx, map[string]Matcher{
+		"code":         codeScreen(),
+		"phoneInvalid": phoneInvalidScreen(),
+	}, d.cfg.WaitTimeout)
+
+	if err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if key == "phoneInvalid" {
+		return fmt.Errorf("%s: %w", fn, domain.ErrPhoneInvalid)
 	}
 
 	return nil
@@ -247,16 +264,20 @@ func (d *Device) submitCode(ctx context.Context, code string) error {
 	}
 
 	key, _, err := d.waitScreenTimeout(ctx, map[string]Matcher{
-		"success": successScreen(),
-		"error":   codeErrorScreen(),
+		"success":  successScreen(),
+		"error":    codeErrorScreen(),
+		"password": passwordScreen(),
 	}, d.cfg.WaitTimeout)
 
 	if err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
-	if key == "error" {
+	switch key {
+	case "error":
 		return fmt.Errorf("%s: %w", fn, domain.ErrCodeInvalid)
+	case "password":
+		return fmt.Errorf("%s: %w", fn, domain.ErrTwoFANotSupported)
 	}
 
 	return nil
