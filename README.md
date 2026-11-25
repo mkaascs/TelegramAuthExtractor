@@ -44,7 +44,7 @@ cp .env.example .env          # заполнить API_KEY, JWT_SECRET, TELEGRAM
 docker compose up --build
 ```
 
-Compose запускает `redroid`, `postgres`, `extractor`, Prometheus и Grafana. `extractor` ждёт готовности Android и PostgreSQL, применяет миграции при подключении к БД и слушает `localhost:8080`. Prometheus опрашивает `extractor:8080` внутри сети Compose. Grafana доступна на [127.0.0.1:3000](http://127.0.0.1:3000). При добавлении источника Prometheus укажи URL `http://prometheus:9090`.
+Compose запускает `redroid`, `postgres`, `extractor`, Prometheus и Grafana. `extractor` ждёт готовности Android и PostgreSQL, применяет миграции при подключении к БД и слушает `localhost:8080`.
 
 Порт ADB redroid проброшен на `127.0.0.1:5555` — к устройству можно подключиться через scrcpy:
 
@@ -66,9 +66,29 @@ adb devices                   # убедиться, что эмулятор по
 task run                      # приложение на :8080 и Prometheus на 127.0.0.1:9090
 ```
 
-Локальный Prometheus использует `config/prometheus.local.yaml` с целью `127.0.0.1:8080`. В [интерфейсе Prometheus](http://127.0.0.1:9090) запрос `up{job="extractor"}` вернёт `1` после успешного scrape. Если Grafana запущена нативно, укажи источник `http://127.0.0.1:9090`. Для запуска только приложения используй `task run:app`.
+Для запуска только приложения используй `task run:app`.
 
 Другие полезные таски: `task test` (unit), `task test:cover` (покрытие), `task test:integration` (интеграционные тесты репозиториев на реальном Postgres через testcontainers, нужен Docker), `task lint`, `task ci` (воспроизводит CI локально), `task generate:api` (перегенерировать REST-слой), `task test:reauth` (интеграционный тест переавторизации).
+
+### Prometheus и Grafana
+
+Сервис отдаёт метрики на `GET /metrics` в режимах `local` и `dev`. Prometheus опрашивает эту ручку каждые 5 секунд. Каждый способ запуска автоматически использует свой конфиг.
+
+| Запуск | Конфиг Prometheus | Адрес сервиса для scrape | URL источника в Grafana |
+|----------------|----------------------|--------------------------|------------------------|
+| `task run` | `config/prometheus.local.yaml` | `127.0.0.1:8080` | `http://127.0.0.1:9090` |
+| Docker Compose | `config/prometheus.yaml` | `extractor:8080` | `http://prometheus:9090` |
+
+Compose запускает Grafana вместе с остальными сервисами. Для локального запуска на macOS используется Homebrew.
+
+```bash
+brew install grafana          # один раз
+brew services start grafana
+```
+
+Открой [Grafana на 127.0.0.1:3000](http://127.0.0.1:3000). При первом входе логин — `admin`, пароль — `GRAFANA_PASSWORD` в Compose или `admin` при локальной установке. В **Connections → Add new connection** выбери **Prometheus**, введи URL из таблицы и нажми **Save & test**. В **Explore** запрос `up{job="extractor"}` вернёт `1`, когда Prometheus успешно опросит сервис.
+
+`queue_depth` показывает число задач в буфере воркера, `sessions_completions_total` считает попытки обработки по исходам. Гистограммы `sessions_duration_seconds` и `sessions_step_duration_seconds` измеряют длительность обработки сессии и отдельных этапов.
 
 ### Пример конфига (`config/local.yaml`)
 
@@ -139,6 +159,7 @@ postgres:
 | **Виртуальный Android** | [redroid](https://github.com/remote-android/redroid-doc) (prod) / эмулятор Android Studio (dev) |
 | **Конфиг** | [cleanenv](https://github.com/ilyakaznacheev/cleanenv) + godotenv (YAML + env) |
 | **Логирование** | slog (структурированный JSON / text) |
+| **Мониторинг** | [Prometheus](https://github.com/prometheus/prometheus) + [Grafana](https://github.com/grafana/grafana) |
 | **Тесты** | testify + httptest + [testcontainers-go](https://github.com/testcontainers/testcontainers-go) |
 | **Контейнеризация** | Docker + Docker Compose |
 
@@ -278,8 +299,9 @@ task test:reauth
 
 - **test** — `go build`, `go vet` и `go test -race` по всем пакетам
 - **lint** — `golangci-lint`
+- **integration** — тесты репозиториев из `internal/infra/storage` с тегом `integration` на PostgreSQL 18 в Docker через Testcontainers
 
-Локально то же самое воспроизводит `task ci`.
+Локально то же самое воспроизводит `task ci`. Отдельно интеграционные тесты запускаются через `task test:integration`.
 
 ---
 
