@@ -31,6 +31,7 @@
 | `POSTGRES_DBNAME` | Имя базы | Да |
 | `POSTGRES_USERNAME` | Пользователь БД | Да |
 | `POSTGRES_PASSWORD` | Пароль БД | Да |
+| `GRAFANA_PASSWORD` | Начальный пароль пользователя `admin` для Grafana в Docker Compose | Для Grafana в Compose |
 | `TELEGRAM_DC` | DC извлечённого ключа для теста переавторизации | Нет |
 | `TELEGRAM_AUTH_KEY` | Извлечённый ключ для теста переавторизации (base64) | Нет |
 
@@ -39,11 +40,11 @@
 ### Запуск через Docker
 
 ```bash
-cp .env.example .env          # заполнить API_KEY, JWT_SECRET, TELEGRAM_*, POSTGRES_*
+cp .env.example .env          # заполнить API_KEY, JWT_SECRET, TELEGRAM_*, POSTGRES_*, GRAFANA_PASSWORD
 docker compose up --build
 ```
 
-Поднимает три сервиса: `redroid` (виртуальный Android), `postgres` (PostgreSQL 18 с томом `pg-data`) и `extractor`. Сервис стартует только после того, как Android догрузился (healthcheck по `sys.boot_completed`) и БД готова (`pg_isready`); миграции накатываются автоматически при коннекте. API отдаётся на `localhost:8080`.
+Compose запускает `redroid`, `postgres`, `extractor`, Prometheus и Grafana. `extractor` ждёт готовности Android и PostgreSQL, применяет миграции при подключении к БД и слушает `localhost:8080`. Prometheus опрашивает `extractor:8080` внутри сети Compose. Grafana доступна на [127.0.0.1:3000](http://127.0.0.1:3000). При добавлении источника Prometheus укажи URL `http://prometheus:9090`.
 
 Порт ADB redroid проброшен на `127.0.0.1:5555` — к устройству можно подключиться через scrcpy:
 
@@ -59,10 +60,13 @@ scrcpy -s localhost:5555
 ### Локальный запуск
 
 ```bash
+brew install prometheus       # один раз на macOS
 adb devices                   # убедиться, что эмулятор подключён
 # PostgreSQL 18 должен быть запущен на адресе из config/local.yaml (localhost:5432)
-task run                      # запустить сервис (слушает :8080)
+task run                      # приложение на :8080 и Prometheus на 127.0.0.1:9090
 ```
+
+Локальный Prometheus использует `config/prometheus.local.yaml` с целью `127.0.0.1:8080`. В [интерфейсе Prometheus](http://127.0.0.1:9090) запрос `up{job="extractor"}` вернёт `1` после успешного scrape. Если Grafana запущена нативно, укажи источник `http://127.0.0.1:9090`. Для запуска только приложения используй `task run:app`.
 
 Другие полезные таски: `task test` (unit), `task test:cover` (покрытие), `task test:integration` (интеграционные тесты репозиториев на реальном Postgres через testcontainers, нужен Docker), `task lint`, `task ci` (воспроизводит CI локально), `task generate:api` (перегенерировать REST-слой), `task test:reauth` (интеграционный тест переавторизации).
 

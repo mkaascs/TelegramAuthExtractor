@@ -41,8 +41,19 @@ tasks:
       - golangci-lint run ./...
       - go test -tags=integration -count=1 ./internal/infra/storage/...
   run:
-    desc: "Run the service locally"
+    desc: "Run the service and Prometheus locally"
+    deps: [run:app, run:prometheus]
+  run:app:
+    desc: "Run only the service locally"
     env:
       CONFIG_PATH: ./config/local.yaml
     cmds:
-      - go run ./cmd/telegram-auth-extractor
+      - go build -o .local/extractor ./cmd/telegram-auth-extractor
+      - ./.local/extractor
+  run:prometheus:
+    internal: true
+    preconditions:
+      - sh: command -v prometheus
+        msg: "Install Prometheus and add it to PATH (macOS: brew install prometheus)."
+    cmds:
+      - prometheus --config.file=config/prometheus.local.yaml --web.listen-address=127.0.0.1:9090 --storage.tsdb.path=.local/prometheus
