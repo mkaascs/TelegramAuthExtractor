@@ -13,7 +13,7 @@ import (
 
 type DispatcherRepository interface {
 	ClaimPending(ctx context.Context, limit int) ([]*domain.Session, error)
-	RecoverStale(ctx context.Context) error
+	RecoverStale(ctx context.Context) (int64, error)
 }
 
 type Queue interface {
@@ -34,9 +34,15 @@ func NewDispatcher(repo DispatcherRepository, queue Queue, log *slog.Logger, cfg
 
 func (d *Dispatcher) Recover(ctx context.Context) error {
 	const fn = "services.workers.Dispatcher.Recover"
+	log := d.log.With(slog.String("fn", fn))
 
-	if err := d.repo.RecoverStale(ctx); err != nil {
+	recovered, err := d.repo.RecoverStale(ctx)
+	if err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
+	}
+
+	if recovered > 0 {
+		log.Info("sessions were recovered", slog.Int64("count", recovered))
 	}
 
 	return nil
