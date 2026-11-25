@@ -174,7 +174,9 @@ func TestSession_RecoverStale(t *testing.T) {
 	midflight.Status = domain.StatusExtracting
 	require.NoError(t, repo.Update(ctx, midflight))
 
-	require.NoError(t, repo.RecoverStale(ctx))
+	recovered, err := repo.RecoverStale(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, recovered)
 
 	gotQueued, err := repo.Get(ctx, uuid.UUID(queued.ID))
 	require.NoError(t, err)
@@ -184,6 +186,11 @@ func TestSession_RecoverStale(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, domain.StatusFailed, gotMid.Status, "прерванная mid-flight падает в failed")
 	require.NotNil(t, gotMid.Error)
+	require.Equal(t, domain.PublicErrMessage(domain.ErrServiceRestarted), *gotMid.Error)
+
+	recovered, err = repo.RecoverStale(ctx)
+	require.NoError(t, err)
+	require.Zero(t, recovered)
 }
 
 func TestSession_Complete_And_DeleteCascade(t *testing.T) {
@@ -223,18 +230,23 @@ func TestSession_Update_PersistsFields(t *testing.T) {
 	_, _, err := repo.CreateOrGetActive(ctx, s)
 	require.NoError(t, err)
 
-	message := "code_timeout"
-	s.Status = domain.StatusWaitingForCode
+	message := domain.PublicErrMessage(domain.ErrCodeTimeout)
+	s.Status = domain.StatusFailed
 	s.Error = &message
 	s.CodeAttempts = 3
 	require.NoError(t, repo.Update(ctx, s))
 
 	got, err := repo.Get(ctx, uuid.UUID(s.ID))
 	require.NoError(t, err)
-	require.Equal(t, domain.StatusWaitingForCode, got.Status)
+	require.Equal(t, domain.StatusFailed, got.Status)
 	require.NotNil(t, got.Error)
 	require.Equal(t, message, *got.Error)
 	require.Equal(t, 3, got.CodeAttempts)
+
+	next, created, err := repo.CreateOrGetActive(ctx, domain.NewSession(s.Phone, time.Hour))
+	require.NoError(t, err)
+	require.True(t, created, "после таймаута по тому же номеру создаётся новая активная сессия")
+	require.NotEqual(t, s.ID, next.ID)
 }
 
 func TestSession_Update_NotFound(t *testing.T) {

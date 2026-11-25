@@ -1,0 +1,6 @@
+scrape_configs:
+  - job_name: extractor
+    scrape_interval: 5s
+    scrape_timeout: 3s
+    static_configs:
+      - targets: ["extractor:8080"]

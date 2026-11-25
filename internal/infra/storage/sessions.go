@@ -198,39 +198,39 @@ func (s *Session) ClaimPending(ctx context.Context, limit int) ([]*domain.Sessio
 	return sessions, nil
 }
 
-func (s *Session) RecoverStale(ctx context.Context) error {
+func (s *Session) RecoverStale(ctx context.Context) (int64, error) {
 	const fn = "infra.storage.Session.RecoverStale"
 
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("%s: %w", fn, err)
+		return 0, fmt.Errorf("%s: %w", fn, err)
 	}
 
 	defer func() {
 		_ = tx.Rollback(ctx)
 	}()
 
-	if _, err := tx.Exec(ctx,
-		`UPDATE sessions SET status = $1 WHERE status = $2`,
-		string(domain.StatusPending), string(domain.StatusQueued)); err != nil {
-
-		return fmt.Errorf("%s: %w", fn, err)
+	res, err := tx.Exec(ctx, `UPDATE sessions SET status = $1 WHERE status = $2`, string(domain.StatusPending), string(domain.StatusQueued))
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	message := domain.PublicErrMessage(domain.ErrServiceRestarted)
-	if _, err := tx.Exec(ctx,
-		`UPDATE sessions SET status = $1, error = $2
-		 WHERE status IN ('logging_in', 'waiting_for_code', 'entering_code', 'extracting', 'cleanup')`,
-		string(domain.StatusFailed), message); err != nil {
+	recovered := res.RowsAffected()
 
-		return fmt.Errorf("%s: %w", fn, err)
+	res, err = tx.Exec(ctx, `UPDATE sessions SET status = $1, error = $2 WHERE status IN ('logging_in', 'waiting_for_code', 'entering_code', 'extracting', 'cleanup')`,
+		string(domain.StatusFailed), domain.PublicErrMessage(domain.ErrServiceRestarted))
+
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", fn, err)
 	}
+
+	recovered += res.RowsAffected()
 
 	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("%s: %w", fn, err)
+		return 0, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	return nil
+	return recovered, nil
 }
 
 type rowScanner interface {
