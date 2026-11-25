@@ -51,11 +51,12 @@ func (p *Prometheus) RegisterQueueDepth(depth func() int) {
 	p.registerer.MustRegister(queueDepth)
 }
 
-func (p *Prometheus) RecordCompletion(result string, elapsed time.Duration) {
+func (p *Prometheus) RecordCompletion(outcome domain.SessionOutcome, elapsed time.Duration) {
+	result := string(outcome)
 	p.sessionsCompletionsTotal.WithLabelValues(result).Inc()
 	p.sessionsDuration.WithLabelValues(result).Observe(elapsed.Seconds())
 }
 
-func (p *Prometheus) ObserveSessionStep(step domain.Status, result string, elapsed time.Duration) {
-	p.sessionsStepDuration.WithLabelValues(string(step), result).Observe(elapsed.Seconds())
+func (p *Prometheus) ObserveSessionStep(step domain.Status, outcome domain.SessionOutcome, elapsed time.Duration) {
+	p.sessionsStepDuration.WithLabelValues(string(step), string(outcome)).Observe(elapsed.Seconds())
 }

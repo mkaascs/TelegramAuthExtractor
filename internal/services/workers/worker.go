@@ -14,13 +14,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const (
-	resultDone        = "done"
-	resultFailed      = "failed"
-	resultCanceled    = "canceled"
-	resultCodeTimeout = "code_timeout"
-)
-
 type SessionRepository interface {
 	Get(ctx context.Context, sessionID uuid.UUID) (*domain.Session, error)
 	Update(ctx context.Context, session *domain.Session) error
@@ -48,8 +41,8 @@ type Verifier interface {
 }
 
 type Metrics interface {
-	RecordCompletion(result string, elapsed time.Duration)
-	ObserveSessionStep(step domain.Status, result string, elapsed time.Duration)
+	RecordCompletion(outcome domain.SessionOutcome, elapsed time.Duration)
+	ObserveSessionStep(step domain.Status, outcome domain.SessionOutcome, elapsed time.Duration)
 }
 
 type waitingTask struct {
@@ -158,7 +151,7 @@ func (w *Worker) process(ctx context.Context, session *domain.Session) {
 	defer w.setCurrent(nil)
 
 	startedAt := time.Now()
-	outcome := resultFailed
+	outcome := domain.OutcomeFailed
 	defer func() {
 		w.metrics.RecordCompletion(outcome, time.Since(startedAt))
 	}()
@@ -170,8 +163,8 @@ func (w *Worker) process(ctx context.Context, session *domain.Session) {
 	}
 
 	if err != nil {
-		outcome = metricResult(err)
-		if outcome == resultCanceled {
+		outcome = outcomeFromError(err)
+		if outcome == domain.OutcomeCanceled {
 			log.Info("session canceled", slog.String("session_id", sessionID.String()))
 			return
 		}
@@ -180,7 +173,7 @@ func (w *Worker) process(ctx context.Context, session *domain.Session) {
 			log.Error("failed to persist failed status", slog.String("session_id", sessionID.String()), sloglib.Error(err))
 		}
 
-		if outcome == resultCodeTimeout {
+		if outcome == domain.OutcomeCodeTimeout {
 			log.Info("waiting for code timeout", slog.String("session_id", sessionID.String()))
 			return
 		}
@@ -199,20 +192,20 @@ func (w *Worker) process(ctx context.Context, session *domain.Session) {
 		return
 	}
 
-	outcome = resultDone
+	outcome = domain.OutcomeDone
 	log.Info("session extracted", slog.String("session_id", sessionID.String()))
 }
 
-func metricResult(err error) string {
+func outcomeFromError(err error) domain.SessionOutcome {
 	switch {
 	case err == nil:
-		return resultDone
+		return domain.OutcomeDone
 	case errors.Is(err, context.Canceled):
-		return resultCanceled
+		return domain.OutcomeCanceled
 	case errors.Is(err, domain.ErrCodeTimeout):
-		return resultCodeTimeout
+		return domain.OutcomeCodeTimeout
 	default:
-		return resultFailed
+		return domain.OutcomeFailed
 	}
 }
 

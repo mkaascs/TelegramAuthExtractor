@@ -42,7 +42,7 @@ services:
   prometheus:
     image: prom/prometheus:v3
     volumes:
-      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     networks:
       - tg-net
@@ -87,6 +87,8 @@ services:
 volumes:
   redroid-data:
   pg-data:
+  grafana_data:
+  prometheus_data:
 
 networks:
   tg-net:

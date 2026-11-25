@@ -25,7 +25,7 @@ func (w *Worker) runPipeline(ctx context.Context, session *domain.Session) (*dom
 	for {
 		startedAt := time.Now()
 		code, err := w.waitForCode(ctx, session)
-		w.metrics.ObserveSessionStep(domain.StatusWaitingForCode, metricResult(err), time.Since(startedAt))
+		w.metrics.ObserveSessionStep(domain.StatusWaitingForCode, outcomeFromError(err), time.Since(startedAt))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", fn, err)
 		}
@@ -75,7 +75,7 @@ func (w *Worker) login(ctx context.Context, session *domain.Session) error {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
-	w.metrics.ObserveSessionStep(domain.StatusLoggingIn, resultDone, time.Since(now))
+	w.metrics.ObserveSessionStep(domain.StatusLoggingIn, domain.OutcomeDone, time.Since(now))
 
 	return nil
 }
@@ -114,7 +114,7 @@ func (w *Worker) enterCode(ctx context.Context, session *domain.Session, code st
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
-	w.metrics.ObserveSessionStep(domain.StatusEnteringCode, resultDone, time.Since(now))
+	w.metrics.ObserveSessionStep(domain.StatusEnteringCode, domain.OutcomeDone, time.Since(now))
 
 	return nil
 }
@@ -143,7 +143,7 @@ func (w *Worker) extract(ctx context.Context, session *domain.Session) (*domain.
 		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
-	w.metrics.ObserveSessionStep(domain.StatusExtracting, resultDone, time.Since(now))
+	w.metrics.ObserveSessionStep(domain.StatusExtracting, domain.OutcomeDone, time.Since(now))
 
 	return result, nil
 }
@@ -165,7 +165,7 @@ func (w *Worker) runCleanup(session *domain.Session) error {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
-	w.metrics.ObserveSessionStep(domain.StatusCleanup, resultDone, time.Since(now))
+	w.metrics.ObserveSessionStep(domain.StatusCleanup, domain.OutcomeDone, time.Since(now))
 
 	return nil
 }
