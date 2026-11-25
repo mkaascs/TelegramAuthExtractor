@@ -13,6 +13,7 @@ import (
 	"telegram-auth-extractor/internal/delivery/rest"
 	"telegram-auth-extractor/internal/infra/crypto"
 	"telegram-auth-extractor/internal/infra/device"
+	prom "telegram-auth-extractor/internal/infra/prometheus"
 	"telegram-auth-extractor/internal/infra/storage"
 	"telegram-auth-extractor/internal/infra/telegram"
 	"telegram-auth-extractor/internal/infra/tgnet"
@@ -20,6 +21,8 @@ import (
 	"telegram-auth-extractor/internal/lib/logging/sloglib"
 	"telegram-auth-extractor/internal/services/sessions"
 	"telegram-auth-extractor/internal/services/workers"
+
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type App struct {
@@ -47,6 +50,8 @@ func NewApp(cfg config.Config, log *slog.Logger) *App {
 	sessionRepo := storage.NewSession(pg.Pool, log)
 	resultRepo := storage.NewResult(pg.Pool, log)
 
+	metrics := prom.New(prometheus.DefaultRegisterer)
+
 	keys := crypto.NewManager()
 
 	dev := device.NewDevice(cfg.ADB, log)
@@ -55,7 +60,12 @@ func NewApp(cfg config.Config, log *slog.Logger) *App {
 		tgnet.NewParser(),
 		telegram.NewVerifier(cfg.Telegram, log),
 		keys,
+		metrics,
 		log, cfg.Service.Worker)
+
+	metrics.RegisterQueueDepth(func() int {
+		return cfg.Service.Worker.QueueSize - worker.FreeSlots()
+	})
 
 	reaper := workers.NewReaper(sessionRepo, log, cfg.Service.Reaper)
 

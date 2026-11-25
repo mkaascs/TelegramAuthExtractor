@@ -39,6 +39,32 @@ services:
       retries: 10
       start_period: 10s
 
+  prometheus:
+    image: prom/prometheus:v3
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - tg-net
+    healthcheck:
+      test: [ "CMD", "/bin/promtool", "check", "ready" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  grafana:
+    image: grafana/grafana:13.2
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    networks:
+      - tg-net
+    volumes:
+      - grafana_data:/var/lib/grafana
+
   extractor:
     build:
       context: .
@@ -61,6 +87,8 @@ services:
 volumes:
   redroid-data:
   pg-data:
+  grafana_data:
+  prometheus_data:
 
 networks:
   tg-net:

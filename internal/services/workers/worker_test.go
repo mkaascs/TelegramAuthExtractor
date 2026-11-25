@@ -5,15 +5,20 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/stretchr/testify/require"
 
 	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/domain"
+	prom "telegram-auth-extractor/internal/infra/prometheus"
 )
 
 type mockRepo struct {
@@ -146,6 +151,24 @@ func testCfg() config.Worker {
 	}
 }
 
+func newTestMetrics() (*prom.Prometheus, *prometheus.Registry) {
+	registry := prometheus.NewRegistry()
+	return prom.New(registry), registry
+}
+
+func requireMetricSamples(t *testing.T, registry *prometheus.Registry, samples ...string) {
+	t.Helper()
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	promhttp.HandlerFor(registry, promhttp.HandlerOpts{}).ServeHTTP(response, request)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	body := response.Body.String()
+	for _, sample := range samples {
+		require.Contains(t, body, sample+"\n")
+	}
+}
+
 func deliverCode(t *testing.T, w *Worker, id uuid.UUID, code string) {
 	t.Helper()
 	deadline := time.After(2 * time.Second)
@@ -193,10 +216,11 @@ func TestWorker_Process_HappyPath(t *testing.T) {
 
 	repo := &mockRepo{session: session}
 	device := &mockDevice{file: []byte("tgnet")}
+	metrics, registry := newTestMetrics()
 	w := NewWorker(repo, device,
 		mockParser{keys: []domain.DatacenterKey{{DCID: 2}}},
 		mockVerifier{result: result},
-		mockSealer{}, discardLogger(), testCfg())
+		mockSealer{}, metrics, discardLogger(), testCfg())
 
 	done := make(chan struct{})
 	go func() { w.process(context.Background(), session); close(done) }()
@@ -221,6 +245,11 @@ func TestWorker_Process_HappyPath(t *testing.T) {
 		UserID:           1153367122,
 	}, repo.completedResult())
 	require.Nil(t, session.Error)
+	requireMetricSamples(t, registry,
+		`sessions_completions_total{result="done"} 1`,
+		`sessions_duration_seconds_count{result="done"} 1`,
+		`sessions_step_duration_seconds_count{result="done",step="waiting_for_code"} 1`,
+	)
 }
 
 func TestWorker_Process_CodeTimeout(t *testing.T) {
@@ -231,12 +260,14 @@ func TestWorker_Process_CodeTimeout(t *testing.T) {
 
 	repo := &mockRepo{session: session}
 	device := &mockDevice{}
-	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, mockSealer{}, discardLogger(), cfg)
+	metrics, registry := newTestMetrics()
+	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, mockSealer{}, metrics, discardLogger(), cfg)
 
 	w.process(context.Background(), session)
 
 	require.Equal(t, domain.StatusFailed, session.Status)
 	require.NotNil(t, session.Error)
+	require.Equal(t, domain.PublicErrMessage(domain.ErrCodeTimeout), *session.Error)
 
 	require.Equal(t, []string{"prepare", "phone", "clear"}, device.snapshot())
 	require.Equal(t, []domain.Status{
@@ -245,6 +276,11 @@ func TestWorker_Process_CodeTimeout(t *testing.T) {
 		domain.StatusCleanup,
 		domain.StatusFailed,
 	}, repo.snapshot())
+	requireMetricSamples(t, registry,
+		`sessions_completions_total{result="code_timeout"} 1`,
+		`sessions_duration_seconds_count{result="code_timeout"} 1`,
+		`sessions_step_duration_seconds_count{result="code_timeout",step="waiting_for_code"} 1`,
+	)
 }
 
 func TestWorker_Process_Cancelled(t *testing.T) {
@@ -253,7 +289,8 @@ func TestWorker_Process_Cancelled(t *testing.T) {
 
 	repo := &mockRepo{session: session}
 	device := &mockDevice{}
-	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, mockSealer{}, discardLogger(), testCfg())
+	metrics, registry := newTestMetrics()
+	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, mockSealer{}, metrics, discardLogger(), testCfg())
 
 	done := make(chan struct{})
 	go func() { w.process(context.Background(), session); close(done) }()
@@ -265,6 +302,11 @@ func TestWorker_Process_Cancelled(t *testing.T) {
 	require.NotEqual(t, domain.StatusDone, session.Status)
 	require.Nil(t, session.Error)
 	require.Contains(t, device.snapshot(), "clear")
+	requireMetricSamples(t, registry,
+		`sessions_completions_total{result="canceled"} 1`,
+		`sessions_duration_seconds_count{result="canceled"} 1`,
+		`sessions_step_duration_seconds_count{result="canceled",step="waiting_for_code"} 1`,
+	)
 }
 
 func TestWorker_Process_DeviceError(t *testing.T) {
@@ -272,7 +314,8 @@ func TestWorker_Process_DeviceError(t *testing.T) {
 
 	repo := &mockRepo{session: session}
 	device := &mockDevice{phoneErr: errors.New("adb: no device")}
-	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, mockSealer{}, discardLogger(), testCfg())
+	metrics, _ := newTestMetrics()
+	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, mockSealer{}, metrics, discardLogger(), testCfg())
 
 	w.process(context.Background(), session)
 
@@ -287,10 +330,11 @@ func TestWorker_Process_ParserError(t *testing.T) {
 
 	repo := &mockRepo{session: session}
 	device := &mockDevice{file: []byte("tgnet")}
+	metrics, _ := newTestMetrics()
 	w := NewWorker(repo, device,
 		mockParser{err: errors.New("bad tgnet format")},
 		mockVerifier{},
-		mockSealer{}, discardLogger(), testCfg())
+		mockSealer{}, metrics, discardLogger(), testCfg())
 
 	done := make(chan struct{})
 	go func() { w.process(context.Background(), session); close(done) }()
@@ -304,12 +348,34 @@ func TestWorker_Process_ParserError(t *testing.T) {
 	require.Contains(t, device.snapshot(), "clear") // cleanup всё равно
 }
 
+func TestWorker_Process_CompleteError(t *testing.T) {
+	session := domain.NewSession("+79991234567", 0)
+	repo := &mockRepo{session: session, completeErr: errors.New("database unavailable")}
+	metrics, registry := newTestMetrics()
+	w := NewWorker(repo, &mockDevice{}, mockParser{}, mockVerifier{result: &domain.ExtractedData{}},
+		mockSealer{}, metrics, discardLogger(), testCfg())
+
+	done := make(chan struct{})
+	go func() { w.process(context.Background(), session); close(done) }()
+
+	deliverCode(t, w, uuid.UUID(session.ID), "12345")
+	<-done
+
+	require.Equal(t, domain.StatusFailed, session.Status)
+	require.Nil(t, repo.completedResult())
+	requireMetricSamples(t, registry,
+		`sessions_completions_total{result="failed"} 1`,
+		`sessions_duration_seconds_count{result="failed"} 1`,
+	)
+}
+
 func TestWorker_Process_DeletedWhileQueued(t *testing.T) {
 	session := domain.NewSession("+79991234567", 0)
 
 	repo := &mockRepo{getErr: domain.ErrSessionNotFound}
 	device := &mockDevice{}
-	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, mockSealer{}, discardLogger(), testCfg())
+	metrics, _ := newTestMetrics()
+	w := NewWorker(repo, device, mockParser{}, mockVerifier{}, mockSealer{}, metrics, discardLogger(), testCfg())
 
 	w.process(context.Background(), session)
 
@@ -318,13 +384,15 @@ func TestWorker_Process_DeletedWhileQueued(t *testing.T) {
 }
 
 func TestWorker_SubmitCode_Idle(t *testing.T) {
-	w := NewWorker(&mockRepo{}, &mockDevice{}, mockParser{}, mockVerifier{}, mockSealer{}, discardLogger(), testCfg())
+	metrics, _ := newTestMetrics()
+	w := NewWorker(&mockRepo{}, &mockDevice{}, mockParser{}, mockVerifier{}, mockSealer{}, metrics, discardLogger(), testCfg())
 	err := w.SubmitCode(uuid.New(), "12345")
 	require.ErrorIs(t, err, domain.ErrWrongState)
 }
 
 func TestWorker_Cancel_Idle(t *testing.T) {
-	w := NewWorker(&mockRepo{}, &mockDevice{}, mockParser{}, mockVerifier{}, mockSealer{}, discardLogger(), testCfg())
+	metrics, _ := newTestMetrics()
+	w := NewWorker(&mockRepo{}, &mockDevice{}, mockParser{}, mockVerifier{}, mockSealer{}, metrics, discardLogger(), testCfg())
 	err := w.Cancel(uuid.New())
 	require.ErrorIs(t, err, domain.ErrSessionNotFound)
 }
