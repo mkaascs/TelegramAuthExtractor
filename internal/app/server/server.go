@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	nethttpmiddleware "github.com/oapi-codegen/nethttp-middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/swaggest/swgui/v5emb"
 )
 
@@ -41,6 +42,11 @@ func NewServer(handlers apiv1.ServerInterface, verifier middlewares.Verifier, cf
 			"Telegram Auth Extractor",
 			"/swagger/openapi.json",
 			"/swagger/"))
+
+
+		metricsHandler := promhttp.Handler()
+		router.Method(http.MethodGet, "/metrics", metricsHandler)
+		router.Method(http.MethodGet, "/metrics/", metricsHandler)
 	}
 
 	validator := nethttpmiddleware.OapiRequestValidatorWithOptions(spec,

@@ -9,8 +9,16 @@ import (
 	"telegram-auth-extractor/internal/config"
 	"telegram-auth-extractor/internal/domain"
 	"telegram-auth-extractor/internal/lib/logging/sloglib"
+	"time"
 
 	"github.com/google/uuid"
+)
+
+const (
+	resultDone        = "done"
+	resultFailed      = "failed"
+	resultCanceled    = "canceled"
+	resultCodeTimeout = "code_timeout"
 )
 
 type SessionRepository interface {
@@ -39,6 +47,11 @@ type Verifier interface {
 	Verify(ctx context.Context, keys []domain.DatacenterKey) (*domain.ExtractedData, error)
 }
 
+type Metrics interface {
+	RecordCompletion(result string, elapsed time.Duration)
+	ObserveSessionStep(step domain.Status, result string, elapsed time.Duration)
+}
+
 type waitingTask struct {
 	id      uuid.UUID
 	inputCh chan string
@@ -52,21 +65,23 @@ type Worker struct {
 	verifier Verifier
 	sealer   Sealer
 
-	log *slog.Logger
-	cfg config.Worker
+	metrics Metrics
+	log     *slog.Logger
+	cfg     config.Worker
 
 	mx      sync.Mutex
 	queue   chan *domain.Session
 	current *waitingTask
 }
 
-func NewWorker(sessions SessionRepository, device Device, parser Parser, verifier Verifier, sealer Sealer, log *slog.Logger, cfg config.Worker) *Worker {
+func NewWorker(sessions SessionRepository, device Device, parser Parser, verifier Verifier, sealer Sealer, metrics Metrics, log *slog.Logger, cfg config.Worker) *Worker {
 	return &Worker{
 		sessions: sessions,
 		device:   device,
 		parser:   parser,
 		verifier: verifier,
 		sealer:   sealer,
+		metrics:  metrics,
 		log:      log,
 		cfg:      cfg,
 		queue:    make(chan *domain.Session, cfg.QueueSize),
@@ -142,6 +157,12 @@ func (w *Worker) process(ctx context.Context, session *domain.Session) {
 	w.setCurrent(task)
 	defer w.setCurrent(nil)
 
+	startedAt := time.Now()
+	outcome := resultFailed
+	defer func() {
+		w.metrics.RecordCompletion(outcome, time.Since(startedAt))
+	}()
+
 	result, err := w.runPipeline(ctx, session)
 
 	if err := w.runCleanup(session); err != nil {
@@ -149,13 +170,19 @@ func (w *Worker) process(ctx context.Context, session *domain.Session) {
 	}
 
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		outcome = metricResult(err)
+		if outcome == resultCanceled {
 			log.Info("session canceled", slog.String("session_id", sessionID.String()))
 			return
 		}
 
 		if err := w.setFailedStatus(ctx, session, err); err != nil {
 			log.Error("failed to persist failed status", slog.String("session_id", sessionID.String()), sloglib.Error(err))
+		}
+
+		if outcome == resultCodeTimeout {
+			log.Info("waiting for code timeout", slog.String("session_id", sessionID.String()))
+			return
 		}
 
 		log.Warn("session failed", slog.String("session_id", sessionID.String()), sloglib.Error(err))
@@ -172,7 +199,21 @@ func (w *Worker) process(ctx context.Context, session *domain.Session) {
 		return
 	}
 
+	outcome = resultDone
 	log.Info("session extracted", slog.String("session_id", sessionID.String()))
+}
+
+func metricResult(err error) string {
+	switch {
+	case err == nil:
+		return resultDone
+	case errors.Is(err, context.Canceled):
+		return resultCanceled
+	case errors.Is(err, domain.ErrCodeTimeout):
+		return resultCodeTimeout
+	default:
+		return resultFailed
+	}
 }
 
 func (w *Worker) complete(ctx context.Context, session *domain.Session, result *domain.ExtractedData) error {

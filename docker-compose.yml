@@ -44,6 +44,8 @@ services:
     volumes:
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
       - prometheus_data:/prometheus
+    networks:
+      - tg-net
     healthcheck:
       test: [ "CMD", "/bin/promtool", "check", "ready" ]
       interval: 10s
@@ -58,6 +60,8 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: "false"
+    networks:
+      - tg-net
     volumes:
       - grafana_data:/var/lib/grafana
 

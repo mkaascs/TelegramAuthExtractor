@@ -23,7 +23,9 @@ func (w *Worker) runPipeline(ctx context.Context, session *domain.Session) (*dom
 	}
 
 	for {
+		startedAt := time.Now()
 		code, err := w.waitForCode(ctx, session)
+		w.metrics.ObserveSessionStep(domain.StatusWaitingForCode, metricResult(err), time.Since(startedAt))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", fn, err)
 		}
@@ -59,6 +61,8 @@ func (w *Worker) runPipeline(ctx context.Context, session *domain.Session) (*dom
 func (w *Worker) login(ctx context.Context, session *domain.Session) error {
 	const fn = "services.workers.Worker.login"
 
+	now := time.Now()
+
 	if err := w.setStatus(ctx, session, domain.StatusLoggingIn); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
@@ -70,6 +74,8 @@ func (w *Worker) login(ctx context.Context, session *domain.Session) error {
 	if err := w.device.EnterPhone(ctx, session.Phone); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
+
+	w.metrics.ObserveSessionStep(domain.StatusLoggingIn, resultDone, time.Since(now))
 
 	return nil
 }
@@ -98,6 +104,8 @@ func (w *Worker) waitForCode(ctx context.Context, session *domain.Session) (stri
 func (w *Worker) enterCode(ctx context.Context, session *domain.Session, code string) error {
 	const fn = "services.workers.Worker.enterCode"
 
+	now := time.Now()
+
 	if err := w.setStatus(ctx, session, domain.StatusEnteringCode); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
@@ -106,11 +114,15 @@ func (w *Worker) enterCode(ctx context.Context, session *domain.Session, code st
 		return fmt.Errorf("%s: %w", fn, err)
 	}
 
+	w.metrics.ObserveSessionStep(domain.StatusEnteringCode, resultDone, time.Since(now))
+
 	return nil
 }
 
 func (w *Worker) extract(ctx context.Context, session *domain.Session) (*domain.ExtractedData, error) {
 	const fn = "services.workers.Worker.extract"
+
+	now := time.Now()
 
 	if err := w.setStatus(ctx, session, domain.StatusExtracting); err != nil {
 		return nil, fmt.Errorf("%s: %w", fn, err)
@@ -131,6 +143,8 @@ func (w *Worker) extract(ctx context.Context, session *domain.Session) (*domain.
 		return nil, fmt.Errorf("%s: %w", fn, err)
 	}
 
+	w.metrics.ObserveSessionStep(domain.StatusExtracting, resultDone, time.Since(now))
+
 	return result, nil
 }
 
@@ -140,6 +154,8 @@ func (w *Worker) runCleanup(session *domain.Session) error {
 	ctx, cancel := context.WithTimeout(context.Background(), w.cfg.CleanupTimeout)
 	defer cancel()
 
+	now := time.Now()
+
 	if err := w.setStatus(ctx, session, domain.StatusCleanup); err != nil {
 		w.log.Warn("failed to set cleanup status",
 			slog.String("session_id", uuid.UUID(session.ID).String()), sloglib.Error(err))
@@ -148,6 +164,8 @@ func (w *Worker) runCleanup(session *domain.Session) error {
 	if err := w.device.Clear(ctx); err != nil {
 		return fmt.Errorf("%s: %w", fn, err)
 	}
+
+	w.metrics.ObserveSessionStep(domain.StatusCleanup, resultDone, time.Since(now))
 
 	return nil
 }

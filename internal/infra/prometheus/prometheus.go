@@ -17,18 +17,18 @@ type Prometheus struct {
 func New(reg prometheus.Registerer) *Prometheus {
 	sessionsCompletionsTotal := prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "sessions_completions_total",
-		Help: "Total number of finished sessions by result",
+		Help: "Total number of completed session processing attempts by result",
 	}, []string{"result"})
 
 	sessionsStepDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "sessions_step_duration_seconds",
-		Help:    "The total time in seconds taken to complete one step of a session",
+		Help:    "Duration in seconds of observed session steps by result",
 		Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 200},
-	}, []string{"step"})
+	}, []string{"step", "result"})
 
 	sessionsDuration := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "sessions_duration_seconds",
-		Help:    "The total time in seconds taken to complete a session",
+		Help:    "Duration in seconds of session processing attempts by result",
 		Buckets: []float64{1, 5, 10, 30, 60, 120, 300},
 	}, []string{"result"})
 
@@ -51,30 +51,11 @@ func (p *Prometheus) RegisterQueueDepth(depth func() int) {
 	p.registerer.MustRegister(queueDepth)
 }
 
-func (p *Prometheus) CompletionDone() {
-	p.sessionsCompletionsTotal.WithLabelValues("done").Inc()
+func (p *Prometheus) RecordCompletion(result string, elapsed time.Duration) {
+	p.sessionsCompletionsTotal.WithLabelValues(result).Inc()
+	p.sessionsDuration.WithLabelValues(result).Observe(elapsed.Seconds())
 }
 
-func (p *Prometheus) CompletionScreenTimeout() {
-	p.sessionsCompletionsTotal.WithLabelValues("timeout").Inc()
-}
-
-func (p *Prometheus) CompletionScreenCancel() {
-	p.sessionsCompletionsTotal.WithLabelValues("canceled").Inc()
-}
-
-func (p *Prometheus) CompletionFailed() {
-	p.sessionsCompletionsTotal.WithLabelValues("failed").Inc()
-}
-
-func (p *Prometheus) ObserveSessionStep(step domain.Status, elapsed time.Duration) {
-	p.sessionsStepDuration.WithLabelValues(string(step)).Observe(elapsed.Seconds())
-}
-
-func (p *Prometheus) ObserveSessionDone(elapsed time.Duration) {
-	p.sessionsDuration.WithLabelValues("done").Observe(elapsed.Seconds())
-}
-
-func (p *Prometheus) ObserveSessionFailed(elapsed time.Duration) {
-	p.sessionsDuration.WithLabelValues("failed").Observe(elapsed.Seconds())
+func (p *Prometheus) ObserveSessionStep(step domain.Status, result string, elapsed time.Duration) {
+	p.sessionsStepDuration.WithLabelValues(string(step), result).Observe(elapsed.Seconds())
 }

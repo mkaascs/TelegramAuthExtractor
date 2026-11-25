@@ -21,9 +21,9 @@ func (m *mockDispatchRepo) ClaimPending(ctx context.Context, limit int) ([]*doma
 	return m.claimFn(ctx, limit)
 }
 
-func (m *mockDispatchRepo) RecoverStale(_ context.Context) error {
+func (m *mockDispatchRepo) RecoverStale(_ context.Context) (int64, error) {
 	m.recovered = true
-	return m.recoverErr
+	return 0, m.recoverErr
 }
 
 type mockQueue struct {
